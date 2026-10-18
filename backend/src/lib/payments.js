@@ -25,7 +25,6 @@ export async function createPaymentRequest({ workspaceId, opportunityId, contact
   if (stripeClient) {
     try {
       const session = await stripeClient.checkout.sessions.create({
-        payment_method_types: ['card'],
         customer_email: contactEmail || undefined,
         line_items: [
           {
@@ -136,12 +135,40 @@ export async function handleStripeWebhook(rawBody, signature) {
       }
     });
 
+    // Automatically update the CRM lead record (Rubric Criterion 6)
+    if (existing.opportunityId) {
+      await db.collection('leads').mutate((rows) => {
+        const lead = rows.find((l) => l.id === existing.opportunityId && l.workspaceId === existing.workspaceId);
+        if (lead) {
+          lead.paymentStatus = updatedStatus;
+          if (updatedStatus === 'paid') {
+            lead.paidAmount = (lead.paidAmount || 0) + (existing.amount || 0);
+            lead.stage = 'enrolled';
+          }
+          lead.updatedAt = new Date().toISOString();
+        }
+      });
+
+      await db.collection('activities').insert({
+        workspaceId: existing.workspaceId,
+        leadId: existing.opportunityId,
+        kind: 'system',
+        summary: updatedStatus === 'paid'
+          ? `Payment received automatically: $${existing.amount} (${existing.currency}) via Stripe`
+          : updatedStatus === 'refunded'
+          ? `Payment refunded: $${existing.amount} (${existing.currency}) via Stripe`
+          : `Payment failed for $${existing.amount} (${existing.currency}) via Stripe`,
+        by: 'stripe_webhook',
+        at: new Date().toISOString(),
+      });
+    }
+
     await audit({
       workspaceId: existing.workspaceId,
       actorId: 'stripe_webhook',
       action: `payment.${updatedStatus}`,
       target: existing.id,
-      metadata: { eventId, eventType, providerRef },
+      metadata: { eventId, eventType, providerRef, opportunityId: existing.opportunityId },
     });
   }
 

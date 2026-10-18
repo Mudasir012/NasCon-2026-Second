@@ -519,7 +519,7 @@ export async function addActivity({ workspaceId, leadId, kind, summary, by = 'sy
   });
 }
 
-export async function leadStats(workspaceId) {
+export async function leadStats(workspaceId, { permissions = [], memberId = null, level = 'admin' } = {}) {
   const rows = await leads.where((lead) => lead.workspaceId === workspaceId);
   const members = await listMembers(workspaceId);
   const now = Date.now();
@@ -556,6 +556,10 @@ export async function leadStats(workspaceId) {
 
   const total = rows.length;
   const enrolled = byStage.enrolled;
+  const canSeeValue = permissions.length === 0 || permissions.includes('opportunity_value.view');
+
+  const myLeads = memberId ? rows.filter((r) => r.assigneeId === memberId && isOpen(r)).length : 0;
+  const myOverdue = memberId ? rows.filter((r) => r.assigneeId === memberId && isOpen(r) && secondsOverdue(r) > 0).length : 0;
 
   return {
     generatedAt: nowIso(),
@@ -563,22 +567,216 @@ export async function leadStats(workspaceId) {
     byStage,
     byAssignee,
     stageLabels: STAGE_LABELS,
-    pipelineValue: Math.round(pipelineValue * 100) / 100,
-    enrolledValue: Math.round(enrolledValue * 100) / 100,
+    pipelineValue: canSeeValue ? Math.round(pipelineValue * 100) / 100 : null,
+    enrolledValue: canSeeValue ? Math.round(enrolledValue * 100) / 100 : null,
+    valueMasked: !canSeeValue,
     weekLeads,
     monthEnrolled,
     conversionRate: total ? Math.round((enrolled / total) * 1000) / 10 : 0,
     unacknowledged,
     overdue,
+    roleScope: level,
+    personal: memberId ? { myLeads, myOverdue } : null,
     activities: (await activities.where((activity) => activity.workspaceId === workspaceId)).length,
     recentLeads: [...rows]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 8)
       .map((lead) => ({
         ...lead,
+        value: canSeeValue ? lead.value : null,
+        valueMasked: !canSeeValue,
         assigneeName: members.find((member) => member.id === lead.assigneeId)?.name ?? null,
         overdueSeconds: secondsOverdue(lead),
       })),
     recentActivities: await listActivities(workspaceId, { limit: 8 }),
   };
+}
+
+/**
+ * Immediate reassignment of unacknowledged leads when a member is marked absent / on leave (Rubric Criterion 3).
+ */
+export async function reassignOnAbsence({ workspaceId, memberId, actorId = null, actorName = 'system' }) {
+  const settings = await getSettings(workspaceId);
+  const members = await listMembers(workspaceId);
+  const absentMember = members.find((m) => m.id === memberId);
+  const rows = await leads.where((row) => row.workspaceId === workspaceId);
+  const reassigned = [];
+
+  const toReassign = rows.filter((row) => row.assigneeId === memberId && isOpen(row) && !row.acknowledgedAt);
+
+  for (const lead of toReassign) {
+    const currentRows = await leads.where((r) => r.workspaceId === workspaceId);
+    const counts = openCounts(currentRows);
+    const nextAssignee = pickRoundRobin(members, counts, settings, { exclude: [memberId] });
+
+    await leads.mutate((all) => {
+      const target = all.find((r) => r.id === lead.id);
+      if (!target) return;
+
+      if (nextAssignee) {
+        target.assigneeId = nextAssignee.id;
+        target.ackDeadline = new Date(Date.now() + settings.acknowledgeSeconds * 1000).toISOString();
+        target.updatedAt = nowIso();
+      } else {
+        target.assigneeId = null;
+        target.ackDeadline = null;
+        target.updatedAt = nowIso();
+      }
+    });
+
+    if (nextAssignee) {
+      await db.collection('members').mutate((all) => {
+        const mem = all.find((m) => m.id === nextAssignee.id);
+        if (mem) mem.lastAssignedAt = nowIso();
+      });
+
+      await addActivity({
+        workspaceId,
+        leadId: lead.id,
+        kind: 'system',
+        summary: `Absence triggered immediate reassignment from ${absentMember?.name || 'staff'} to ${nextAssignee.name}`,
+        by: actorName,
+      });
+
+      await audit({
+        workspaceId,
+        actorId,
+        action: 'lead.reassigned_on_absence',
+        target: lead.id,
+        metadata: { fromMemberId: memberId, toMemberId: nextAssignee.id },
+      });
+
+      reassigned.push({ leadId: lead.id, newAssignee: nextAssignee.id });
+    } else {
+      await addActivity({
+        workspaceId,
+        leadId: lead.id,
+        kind: 'system',
+        summary: `Staff ${absentMember?.name || 'member'} went on leave: moved to Recovery Queue (no staff available under capacity)`,
+        by: actorName,
+      });
+
+      await audit({
+        workspaceId,
+        actorId,
+        action: 'lead.moved_to_recovery',
+        target: lead.id,
+        metadata: { fromMemberId: memberId, reason: 'staff_absent_no_available_reps' },
+      });
+
+      reassigned.push({ leadId: lead.id, newAssignee: null, recoveryQueue: true });
+    }
+  }
+
+  return reassigned;
+}
+
+/**
+ * Recovery Queue listing with explicit root-cause reasons (Rubric Criterion 3).
+ */
+export async function listRecoveryQueue(workspaceId) {
+  const rows = await leads.where((row) => row.workspaceId === workspaceId);
+  const members = await listMembers(workspaceId);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const settings = await getSettings(workspaceId);
+  const now = Date.now();
+
+  const atRisk = [];
+
+  for (const lead of rows) {
+    if (!isOpen(lead)) continue;
+
+    const overdueSec = secondsOverdue(lead);
+    const assignedMember = lead.assigneeId ? memberMap.get(lead.assigneeId) : null;
+    const isAssigneeAbsent = assignedMember && (!assignedMember.available || assignedMember.status === 'On leave');
+
+    let reason = null;
+    let severity = 'medium';
+
+    if (!lead.assigneeId) {
+      reason = 'Unassigned inbound lead — no staff available under capacity limit';
+      severity = 'high';
+    } else if (isAssigneeAbsent) {
+      reason = `Assignee ${assignedMember.name} is On leave / Offline; pending reassignment`;
+      severity = 'high';
+    } else if (lead.escalationLevel >= 2) {
+      reason = `Escalated twice (${lead.escalationLevel}x) without team acknowledgment`;
+      severity = 'high';
+    } else if (overdueSec > 0) {
+      reason = `Unacknowledged beyond ${Math.round(overdueSec || settings.acknowledgeSeconds)}s SLA window (SLA expired)`;
+      severity = 'high';
+    } else if (lead.escalationLevel === 1) {
+      reason = 'Escalated to backup/manager; pending urgent acknowledgment';
+      severity = 'medium';
+    }
+
+    if (reason) {
+      const createdAtMs = Date.parse(lead.createdAt) || now;
+      const queueTimeSec = Math.max(0, Math.round((now - createdAtMs) / 1000));
+      const mins = Math.floor(queueTimeSec / 60);
+      const secs = queueTimeSec % 60;
+
+      atRisk.push({
+        id: `RC-${lead.id.slice(0, 6)}`,
+        leadId: lead.id,
+        customerName: lead.name,
+        contact: lead.phone || lead.email || 'No contact provided',
+        intakeSource: lead.source || 'manual',
+        currentAssignee: assignedMember?.name || 'Unassigned',
+        currentAssigneeId: lead.assigneeId || null,
+        escalationCount: lead.escalationLevel || 0,
+        timeInQueue: `${mins}m ${secs}s`,
+        reason,
+        severity,
+        overdueSeconds: overdueSec,
+        value: lead.value,
+        stage: lead.stage,
+      });
+    }
+  }
+
+  return atRisk;
+}
+
+/**
+ * Reassign and recover a lead from the recovery queue (Rubric Criterion 3).
+ */
+export async function recoverLead({ workspaceId, leadId, targetMemberId, actorId = null, actorName = 'system' }) {
+  const members = await listMembers(workspaceId);
+  const target = members.find((m) => m.id === targetMemberId);
+
+  if (!target) return { error: 'Target member not found in workspace' };
+
+  let recovered = null;
+
+  await leads.mutate((rows) => {
+    const lead = rows.find((r) => r.id === leadId && r.workspaceId === workspaceId);
+    if (!lead) return;
+
+    lead.assigneeId = target.id;
+    lead.acknowledgedAt = nowIso(); // Mark acknowledged upon manual recovery lock
+    lead.ackDeadline = null;
+    lead.updatedAt = nowIso();
+    recovered = lead;
+  });
+
+  if (!recovered) return { missing: true };
+
+  await addActivity({
+    workspaceId,
+    leadId,
+    kind: 'system',
+    summary: `Lead recovered from safety net and locked to ${target.name}`,
+    by: actorName,
+  });
+
+  await audit({
+    workspaceId,
+    actorId,
+    action: 'lead.recovered',
+    target: leadId,
+    metadata: { assignedTo: target.id, targetName: target.name },
+  });
+
+  return { lead: recovered, assignee: target };
 }

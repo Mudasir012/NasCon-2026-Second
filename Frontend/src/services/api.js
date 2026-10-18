@@ -113,9 +113,13 @@ export const api = {
     createPublicLead: (data) => client.post('/crm/demo-request', data),
     createLead: (data) => client.post('/crm/leads', data),
     acknowledgeLead: (id) => client.post(`/crm/leads/${id}/acknowledge`),
-    reassignLead: (id, assigneeId) => client.post(`/crm/leads/${id}/reassign`, { assigneeId }),
-    updateStage: (id, stage) => client.patch(`/crm/leads/${id}/stage`, { stage }),
-    addActivity: (id, activity) => client.post(`/crm/leads/${id}/activity`, activity),
+    reassignLead: (id, assigneeId) => client.post(`/crm/leads/${id}/assign`, { memberId: assigneeId }),
+    getRecoveryQueue: () => client.get('/crm/recovery-queue'),
+    recoverLead: (id, targetMemberId) => client.post(`/crm/leads/${id}/recover`, { targetMemberId }),
+    getSavedLists: () => client.get('/crm/saved-lists'),
+    createSavedList: (name, filters) => client.post('/crm/saved-lists', { name, filters }),
+    updateStage: (id, stage) => client.patch(`/crm/leads/${id}`, { stage }),
+    addActivity: (id, activity) => client.post('/crm/activities', { leadId: id, ...activity }),
   },
 
   // Workspace & Members (F1.2, F1.3, F3.2)
@@ -139,6 +143,8 @@ export const api = {
     simulateIncoming: (from, body) => client.post('/whatsapp/simulate-incoming', { from, body }),
     getConversation: (contactId) => client.get(`/whatsapp/conversation/${contactId}`),
     sendMessage: (contactId, body) => client.post('/whatsapp/send', { contactId, body }),
+    getFailures: () => client.get('/whatsapp/failures'),
+    retryMessage: (id) => client.post(`/whatsapp/messages/${id}/retry`),
   },
 
   // Calendar / Google (I3.1 - I3.7)

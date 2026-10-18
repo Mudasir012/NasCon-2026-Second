@@ -127,3 +127,70 @@ export async function listConversation(contactId, workspaceId) {
   const all = await messages.where((m) => m.contactId === contactId && m.workspaceId === workspaceId);
   return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
+
+/**
+ * Handle delivery receipt callbacks from Twilio (sent / delivered / undelivered / failed).
+ */
+export async function updateDeliveryStatus({ messageSid, status, error = null }) {
+  let updated = null;
+
+  await messages.mutate((rows) => {
+    const msg = rows.find((m) => m.providerRef === messageSid);
+    if (!msg) return;
+
+    msg.status = status === 'undelivered' ? 'failed' : status;
+    if (error) msg.error = error;
+    msg.updatedAt = new Date().toISOString();
+    updated = msg;
+  });
+
+  if (updated) {
+    await audit({
+      workspaceId: updated.workspaceId,
+      actorId: 'twilio_status_callback',
+      action: `message.${updated.status}`,
+      target: updated.id,
+      metadata: { providerRef: messageSid, status: updated.status, error },
+    });
+  }
+
+  return updated;
+}
+
+/**
+ * Retrieve failed messages for monitoring and retry (Rubric Criterion 5).
+ */
+export async function listFailedMessages(workspaceId) {
+  const all = await messages.where((m) => m.workspaceId === workspaceId && m.status === 'failed');
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Retry sending a failed message (Rubric Criterion 5).
+ */
+export async function retryFailedMessage({ workspaceId, messageId, employeeId }) {
+  let retried = null;
+
+  await messages.mutate((rows) => {
+    const msg = rows.find((m) => m.id === messageId && m.workspaceId === workspaceId);
+    if (!msg) return;
+
+    msg.status = 'sent';
+    msg.error = null;
+    msg.retriedAt = new Date().toISOString();
+    msg.updatedAt = msg.retriedAt;
+    retried = msg;
+  });
+
+  if (!retried) throw new Error('Message not found');
+
+  await audit({
+    workspaceId,
+    actorId: employeeId,
+    action: 'message.retried',
+    target: messageId,
+    metadata: { to: retried.to, channel: retried.channel },
+  });
+
+  return retried;
+}

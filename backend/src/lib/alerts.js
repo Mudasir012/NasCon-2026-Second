@@ -43,15 +43,29 @@ export function configuredChannels(settings) {
   return channels;
 }
 
+function getLeadUrl(leadId) {
+  if (!leadId) return '';
+  const base = (process.env.FRONTEND_URL || process.env.PUBLIC_ORIGIN || 'http://localhost:5173').replace(/\/+$/, '');
+  return `${base}/leads/${leadId}`;
+}
+
 function payloadFor(channel, message, settings) {
+  const link = getLeadUrl(message.leadId);
+
   if (channel === 'slack') {
-    return { text: `*${message.title}*\n${message.body}` };
+    const text = link
+      ? `*${message.title}*\n${message.body}\n<${link}|Open Lead in OmniFlow>`
+      : `*${message.title}*\n${message.body}`;
+    return { text };
   }
 
   if (channel === 'telegram') {
+    const text = link
+      ? `${message.title}\n${message.body}\nView Lead: ${link}`
+      : `${message.title}\n${message.body}`;
     return {
       url: `https://api.telegram.org/bot${settings.alerts.telegramBotToken}/sendMessage`,
-      body: { chat_id: settings.alerts.telegramChatId, text: `${message.title}\n${message.body}` },
+      body: { chat_id: settings.alerts.telegramChatId, text },
     };
   }
 
@@ -59,6 +73,7 @@ function payloadFor(channel, message, settings) {
     title: message.title,
     body: message.body,
     leadId: message.leadId ?? null,
+    leadUrl: link || null,
     level: message.level ?? null,
     at: new Date().toISOString(),
   };

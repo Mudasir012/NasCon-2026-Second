@@ -3,8 +3,9 @@ import test from 'node:test';
 import { createPaymentRequest, handleStripeWebhook, getRevenueMetrics } from '../src/lib/payments.js';
 
 test('creates a payment request and tracks uncollected projected revenue (I2.1, I2.6)', async () => {
+  const wsId = `test_ws_${Date.now()}_1`;
   const payment = await createPaymentRequest({
-    workspaceId: 'test_ws',
+    workspaceId: wsId,
     opportunityId: 'opp_123',
     contactId: 'ct_123',
     amount: 500,
@@ -16,13 +17,14 @@ test('creates a payment request and tracks uncollected projected revenue (I2.1, 
   assert.equal(payment.status, 'unpaid');
   assert.ok(payment.checkoutUrl);
 
-  const metrics = await getRevenueMetrics('test_ws');
-  assert.ok(metrics.projectedRevenue >= 500);
+  const metrics = await getRevenueMetrics(wsId);
+  assert.equal(metrics.projectedRevenue, 500);
 });
 
 test('webhook confirms payment and updates to collected revenue idempotently (I2.2, I2.4)', async () => {
+  const wsId = `test_ws_${Date.now()}_2`;
   const payment = await createPaymentRequest({
-    workspaceId: 'test_ws_2',
+    workspaceId: wsId,
     opportunityId: 'opp_456',
     amount: 1000,
     currency: 'USD',
@@ -44,6 +46,6 @@ test('webhook confirms payment and updates to collected revenue idempotently (I2
 
   assert.equal(idempotentResult.ok, true);
 
-  const metrics = await getRevenueMetrics('test_ws_2');
+  const metrics = await getRevenueMetrics(wsId);
   assert.equal(metrics.collectedRevenue, 1000);
 });

@@ -75,21 +75,80 @@ router.get('/meta', async (req, res) => {
   });
 });
 
+function applyFieldProtection(lead, permissions) {
+  if (!lead) return lead;
+  const canSeeValue = permissions.includes('opportunity_value.view');
+  if (canSeeValue) return lead;
+  return {
+    ...lead,
+    value: null,
+    valueMasked: true,
+  };
+}
+
 router.get('/stats', requirePermission('crm.view'), async (req, res) => {
   const { leadStats } = await import('../lib/leads.js');
-  res.json(await leadStats(req.workspace.id));
+  res.json(await leadStats(req.workspace.id, {
+    permissions: req.permissions,
+    memberId: req.member.id,
+    level: req.member.level,
+  }));
+});
+
+router.get('/recovery-queue', requirePermission('crm.view'), async (req, res) => {
+  const { listRecoveryQueue } = await import('../lib/leads.js');
+  const queue = await listRecoveryQueue(req.workspace.id);
+  res.json({ queue: queue.map((item) => applyFieldProtection(item, req.permissions)) });
+});
+
+router.post('/leads/:id/recover', requirePermission('assignment.manage'), async (req, res) => {
+  const { recoverLead } = await import('../lib/leads.js');
+  const targetMemberId = req.body?.targetMemberId || req.member.id;
+  const result = await recoverLead({
+    workspaceId: req.workspace.id,
+    leadId: req.params.id,
+    targetMemberId,
+    actorId: req.user.id,
+    actorName: req.user.name,
+  });
+
+  if (result.missing) return res.status(404).json({ error: 'No such lead' });
+  if (result.error) return res.status(400).json({ error: result.error });
+
+  return res.json(result);
+});
+
+router.get('/saved-lists', requirePermission('crm.view'), async (req, res) => {
+  const lists = await db.collection('saved_lists').where((l) => l.workspaceId === req.workspace.id);
+  res.json({ lists });
+});
+
+router.post('/saved-lists', requirePermission('crm.view'), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'List name is required' });
+
+  const record = await db.collection('saved_lists').insert({
+    workspaceId: req.workspace.id,
+    name,
+    filters: req.body?.filters || {},
+    createdBy: req.user.id,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.status(201).json({ list: record });
 });
 
 router.get('/leads', requirePermission('crm.view'), async (req, res) => {
   const { listLeads } = await import('../lib/leads.js');
+  const items = await listLeads(req.workspace.id, {
+    stage: req.query.stage,
+    query: req.query.q,
+    assigneeId: req.query.assigneeId,
+    unacknowledged: req.query.unacknowledged,
+  });
 
   res.json({
-    leads: await listLeads(req.workspace.id, {
-      stage: req.query.stage,
-      query: req.query.q,
-      assigneeId: req.query.assigneeId,
-      unacknowledged: req.query.unacknowledged,
-    }),
+    leads: items.map((l) => applyFieldProtection(l, req.permissions)),
   });
 });
 
@@ -99,7 +158,7 @@ router.get('/leads/:id', requirePermission('crm.view'), async (req, res) => {
 
   if (!lead) return res.status(404).json({ error: 'No such lead' });
 
-  return res.json({ lead });
+  return res.json({ lead: applyFieldProtection(lead, req.permissions) });
 });
 
 router.post('/leads', requirePermission('crm.create'), async (req, res) => {

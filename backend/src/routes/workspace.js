@@ -70,15 +70,26 @@ router.patch('/members/:id', requirePermission('assignment.manage'), async (req,
 
   const updated = await updateMember(target.id, req.workspace.id, req.body ?? {});
 
+  let reassigned = [];
+  if (req.body?.available === false || req.body?.status === 'On leave' || req.body?.status === 'Offline') {
+    const { reassignOnAbsence } = await import('../lib/leads.js');
+    reassigned = await reassignOnAbsence({
+      workspaceId: req.workspace.id,
+      memberId: target.id,
+      actorId: req.user.id,
+      actorName: req.user.name,
+    });
+  }
+
   await audit({
     workspaceId: req.workspace.id,
     actorId: req.user.id,
     action: 'member.updated',
     target: target.id,
-    metadata: { changes: Object.keys(req.body ?? {}) },
+    metadata: { changes: Object.keys(req.body ?? {}), reassignedCount: reassigned.length },
   });
 
-  return res.json({ member: updated });
+  return res.json({ member: updated, reassigned });
 });
 
 router.delete('/members/:id', requirePermission('assignment.manage'), async (req, res) => {
@@ -94,6 +105,14 @@ router.delete('/members/:id', requirePermission('assignment.manage'), async (req
     return res.status(403).json({ error: 'You cannot remove a member at or above your level' });
   }
 
+  const { reassignOnAbsence } = await import('../lib/leads.js');
+  const reassigned = await reassignOnAbsence({
+    workspaceId: req.workspace.id,
+    memberId: target.id,
+    actorId: req.user.id,
+    actorName: req.user.name,
+  });
+
   await removeMember(target.id, req.workspace.id);
 
   await audit({
@@ -101,9 +120,10 @@ router.delete('/members/:id', requirePermission('assignment.manage'), async (req
     actorId: req.user.id,
     action: 'member.removed',
     target: target.id,
+    metadata: { reassignedCount: reassigned.length },
   });
 
-  return res.json({ ok: true });
+  return res.json({ ok: true, reassigned });
 });
 
 router.get('/roles', requirePermission('crm.view'), async (req, res) => {
