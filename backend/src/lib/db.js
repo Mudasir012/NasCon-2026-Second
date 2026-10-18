@@ -7,7 +7,17 @@ import { MongoClient } from 'mongodb';
 const here = dirname(fileURLToPath(import.meta.url));
 export const dataDir = join(here, '..', '..', 'data');
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/omniflow';
+export function sanitizeMongoUri(raw) {
+  let uri = String(raw || '').trim();
+  uri = uri.replace(/^(MONGODB_URI|MONGO_URI)\s*=\s*/i, '').trim();
+  uri = uri.replace(/^['"]|['"]$/g, '').trim();
+  if (!uri || (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://'))) {
+    return 'mongodb://127.0.0.1:27017/omniflow';
+  }
+  return uri;
+}
+
+const MONGODB_URI = sanitizeMongoUri(process.env.MONGODB_URI || process.env.MONGO_URI);
 
 let mongoClient = null;
 let mongoDb = null;
@@ -17,9 +27,10 @@ let isMongoConnected = false;
 export async function initMongo() {
   if (mongoDb) return mongoDb;
   try {
-    mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 2000,
-      connectTimeoutMS: 2000,
+    const cleanUri = sanitizeMongoUri(process.env.MONGODB_URI || process.env.MONGO_URI);
+    mongoClient = new MongoClient(cleanUri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
     });
     await mongoClient.connect();
     mongoDb = mongoClient.db();

@@ -18,7 +18,10 @@ export const config = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   mongodb: {
-    uri: process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/omniflow',
+    uri: (process.env.MONGODB_URI ?? process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/omniflow')
+      .replace(/^(MONGODB_URI|MONGO_URI)\s*=\s*/i, '')
+      .trim()
+      .replace(/^['"]|['"]$/g, ''),
   },
   jwt: {
     secret: process.env.JWT_SECRET ?? 'omniflow-development-secret-key-32chars',
