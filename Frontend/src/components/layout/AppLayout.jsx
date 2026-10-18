@@ -20,7 +20,6 @@ import {
   Menu,
   X,
   Search,
-  Shield,
   FileText,
   Layers,
   Activity,
@@ -29,20 +28,21 @@ import {
   Bell,
   Clock
 } from 'lucide-react';
-import { useAuth, DEMO_USERS } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import SessionExpiredModal from '../auth/SessionExpiredModal';
 
 export default function AppLayout({ currentRoute, onNavigate, onExit, children }) {
-  const { currentUser, switchRole, hasPermission, logout, triggerSessionExpired } = useAuth();
+  const { currentUser, hasPermission, logout, triggerSessionExpired } = useAuth();
+  const { workspace } = useWorkspace();
 
   // Employee availability status state
   const [empStatus, setEmpStatus] = useState('Available');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showAbsenceNotice, setShowAbsenceNotice] = useState(false);
 
-  // Profile menu and Role Switcher dropdown state
+  // Profile menu dropdown state
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
 
   // Mobile drawer state
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -69,15 +69,13 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
       id: 'recovery',
       label: 'Recovery Queue',
       icon: AlertOctagon,
-      permission: 'rules.manage',
-      badge: '3',
-      badgeColor: 'bg-[#faece8] text-[#c26751] border-[#c26751]/30'
+      permission: 'assignment.manage'
     },
     {
       id: 'rules',
       label: 'Assignment & SLA Rules',
       icon: Sliders,
-      permission: 'rules.manage'
+      permission: 'assignment.manage'
     },
     {
       id: 'pipeline',
@@ -113,7 +111,7 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
       id: 'custom-fields',
       label: 'Custom Fields',
       icon: SlidersHorizontal,
-      permission: 'settings.manage'
+      permission: 'assignment.manage'
     },
     {
       id: 'messaging',
@@ -137,7 +135,7 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
       id: 'team',
       label: 'Team & RBAC Roles',
       icon: Users,
-      permission: 'users.manage'
+      permission: 'assignment.manage'
     },
     {
       id: 'integrations',
@@ -161,7 +159,7 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
       id: 'settings',
       label: 'Workspace Settings',
       icon: Settings,
-      permission: 'settings.manage'
+      permission: 'assignment.manage'
     }
   ];
 
@@ -178,12 +176,6 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
       setShowAbsenceNotice(true);
       setTimeout(() => setShowAbsenceNotice(false), 5000);
     }
-  };
-
-  const handleSelectRole = (role) => {
-    switchRole(role);
-    setShowRoleMenu(false);
-    setShowProfileMenu(false);
   };
 
   // Search Results Simulation
@@ -227,7 +219,7 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
 
             <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-[#f4f2ee] border border-[#e8e5de] text-[11px] font-semibold text-[#1a1917]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#52796f]"></span>
-              {currentUser?.tenant || 'Solaria Energy Systems (Tenant #WS-104)'}
+              {workspace?.name || 'Workspace'}
             </div>
           </div>
 
@@ -276,39 +268,6 @@ export default function AppLayout({ currentRoute, onNavigate, onExit, children }
                       className="w-full text-left px-3 py-1.5 rounded hover:bg-[#f4f2ee] text-[#1a1917] font-medium cursor-pointer"
                     >
                       {st}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Quick Role Switcher Pill (Person A Mock Auth & Permission Switcher) */}
-            <div className="relative">
-              <button
-                onClick={() => setShowRoleMenu(!showRoleMenu)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#faf9f6] border border-[#d3cfc7] text-xs font-bold text-[#1a1917] hover:bg-[#f4f2ee] transition-colors cursor-pointer"
-                title="Switch active role to test RBAC"
-              >
-                <Shield size={12} className="text-[#4a6b82]" />
-                <span>{currentUser?.role || 'Owner'}</span>
-                <ChevronDown size={11} className="text-[#79756d]" />
-              </button>
-
-              {showRoleMenu && (
-                <div className="absolute right-0 mt-1.5 w-48 rounded-md border border-[#e8e5de] bg-white p-1.5 shadow-lg z-50 text-xs">
-                  <div className="px-2 py-1 text-[10px] uppercase font-bold text-[#79756d] border-b border-[#e8e5de] mb-1">
-                    Simulate RBAC Role:
-                  </div>
-                  {['Owner', 'Admin', 'Manager', 'User'].map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => handleSelectRole(r)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between text-xs font-medium cursor-pointer ${
-                        currentUser?.role === r ? 'bg-[#1a1917] text-white' : 'hover:bg-[#f4f2ee] text-[#1a1917]'
-                      }`}
-                    >
-                      <span>{r}</span>
-                      {currentUser?.role === r && <span className="text-[10px]">Active</span>}
                     </button>
                   ))}
                 </div>

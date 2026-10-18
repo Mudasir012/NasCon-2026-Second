@@ -3,12 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { record as audit, listEntries, verifyChain } from '../lib/audit.js';
 import { listAlerts } from '../lib/alerts.js';
 import { requireAuth } from '../lib/auth.js';
-import { authorizationUrl, bookAppointment, busyIntervals, connectionFor, disconnect, googleConfigured, redirectUri, saveTokens } from '../lib/calendar.js';
 import { workspaceContext, requirePermission } from '../lib/context.js';
 import { db } from '../lib/db.js';
-import { describe, findMember, listMembers, permissionsFor, removeMember, updateMember } from '../lib/members.js';
-import { LEVELS, LEVEL_LABELS, PERMISSIONS } from '../lib/permissions.js';
-import { createRole, findRole, listRoles, removeRole, updateRole } from '../lib/roles.js';
+import { findMember } from '../lib/members.js';
 import { getSettings, saveSettings } from '../lib/settings.js';
 
 const router = Router();

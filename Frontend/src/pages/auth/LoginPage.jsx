@@ -5,20 +5,28 @@ import {
   EyeOff,
   Lock,
   Mail,
-  AlertTriangle,
   ArrowRight,
   RefreshCw,
-  CheckCircle2,
   Clock
 } from 'lucide-react';
-import { useAuth, DEMO_USERS } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import ErrorBanner from '../../components/common/ErrorBanner';
+
+// Real, seeded accounts (created on backend boot).
+const DEMO_ACCOUNTS = [
+  { role: 'Owner', email: 'owner@omniflow.io', avatar: 'OW', desc: 'Full root access' },
+  { role: 'Admin', email: 'admin@omniflow.io', avatar: 'AD', desc: 'Manage all ops' },
+  { role: 'Rep', email: 'marcus@omniflow.io', avatar: 'MV', desc: 'Standard rep' },
+  { role: 'Rep', email: 'jordan@omniflow.io', avatar: 'JR', desc: 'Standard rep' }
+];
+
+const DEMO_PASSWORD = 'Password123!';
 
 export default function LoginPage({ onNavigate }) {
   const { login } = useAuth();
 
-  const [email, setEmail] = useState('alex@solaria.io');
-  const [password, setPassword] = useState('Passw0rd!2026');
+  const [email, setEmail] = useState('owner@omniflow.io');
+  const [password, setPassword] = useState(DEMO_PASSWORD);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -45,22 +53,14 @@ export default function LoginPage({ onNavigate }) {
     return () => clearInterval(interval);
   }, [lockoutTimer]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
-    // If currently locked out, prevent submission
-    if (lockoutTimer > 0) {
-      return;
-    }
+    if (lockoutTimer > 0) return;
 
-    // Inline validation
-    if (!email.trim()) {
+    if (!email.trim() || !email.includes('@')) {
       setErrorMessage('Please enter a valid business email address.');
-      return;
-    }
-    if (!email.includes('@')) {
-      setErrorMessage('Invalid email format. E.g. name@company.com');
       return;
     }
     if (!password) {
@@ -69,46 +69,28 @@ export default function LoginPage({ onNavigate }) {
     }
 
     setLoading(true);
-
-    // Simulate login verification
-    setTimeout(() => {
-      setLoading(false);
-
-      // Simulate failed attempt check
-      if (password === 'wrong' || password.length < 6) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
-
-        if (nextAttempts >= 5) {
-          setLockoutTimer(30); // 30 second brute force lockout
-          setErrorMessage('Account locked! 5 consecutive failed login attempts detected.');
-        } else {
-          setErrorMessage(`Invalid credentials. Attempt ${nextAttempts} of 5 before temporary lockout.`);
-        }
-        return;
-      }
-
-      // Successful login
-      let matchedRole = 'Owner';
-      if (email.toLowerCase().includes('admin') || email.toLowerCase().includes('sara')) {
-        matchedRole = 'Admin';
-      } else if (email.toLowerCase().includes('manager') || email.toLowerCase().includes('marcus')) {
-        matchedRole = 'Manager';
-      } else if (email.toLowerCase().includes('user') || email.toLowerCase().includes('elena')) {
-        matchedRole = 'User';
-      }
-
-      login(email, password, rememberMe, matchedRole);
+    try {
+      await login(email, password, rememberMe);
       onNavigate('dashboard');
-    }, 600);
+    } catch (err) {
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+
+      if (nextAttempts >= 5) {
+        setLockoutTimer(30);
+        setErrorMessage('Account locked! 5 consecutive failed login attempts detected.');
+      } else {
+        setErrorMessage(err.message || 'Incorrect email or password.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDemoLogin = (role) => {
-    const demoUser = DEMO_USERS[role];
-    if (demoUser) {
-      login(demoUser.email, 'demo-secure-pass', true, role);
-      onNavigate('dashboard');
-    }
+  const handleQuickFill = (account) => {
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+    setErrorMessage('');
   };
 
   const simulateFailedAttempt = () => {
@@ -137,7 +119,7 @@ export default function LoginPage({ onNavigate }) {
             <span>OmniFlow</span>
           </div>
           <h1 className="text-2xl font-extrabold text-[#1a1917] tracking-tight">Sign in to your workspace</h1>
-          <p className="text-xs text-[#79756d] mt-1">Enter your credentials or pick a demo role below</p>
+          <p className="text-xs text-[#79756d] mt-1">Use a seeded demo account or your own credentials below</p>
         </div>
 
         {/* Login Card */}
@@ -178,7 +160,7 @@ export default function LoginPage({ onNavigate }) {
                   value={email}
                   disabled={lockoutTimer > 0}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="alex@solaria.io"
+                  placeholder="owner@omniflow.io"
                   className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-[#d3cfc7] rounded-md outline-none focus:border-[#1a1917] disabled:bg-[#f4f2ee] disabled:text-[#a8a49c]"
                   required
                 />
@@ -249,67 +231,28 @@ export default function LoginPage({ onNavigate }) {
             </button>
           </form>
 
-          {/* Quick Demo Role Picker (F1.1) */}
+          {/* Seeded Demo Accounts (fills credentials — still a real login) */}
           <div className="mt-6 pt-5 border-t border-[#e8e5de]">
             <div className="text-[11px] font-bold uppercase tracking-wider text-[#79756d] mb-2.5">
-              1-Click Instant Demo Login:
+              Seeded demo accounts · password {DEMO_PASSWORD}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('Owner')}
-                className="flex items-center gap-1.5 p-2 bg-[#f4f2ee] hover:bg-[#e8e5de] border border-[#e8e5de] rounded text-left transition-colors cursor-pointer"
-              >
-                <div className="h-6 w-6 rounded-full bg-[#4a6b82] text-white flex items-center justify-center font-bold text-[10px]">
-                  OW
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-[#1a1917]">Owner (Alex)</div>
-                  <div className="text-[10px] text-[#79756d]">Full root access</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('Admin')}
-                className="flex items-center gap-1.5 p-2 bg-[#f4f2ee] hover:bg-[#e8e5de] border border-[#e8e5de] rounded text-left transition-colors cursor-pointer"
-              >
-                <div className="h-6 w-6 rounded-full bg-[#52796f] text-white flex items-center justify-center font-bold text-[10px]">
-                  AD
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-[#1a1917]">Admin (Sara)</div>
-                  <div className="text-[10px] text-[#79756d]">Manage all ops</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('Manager')}
-                className="flex items-center gap-1.5 p-2 bg-[#f4f2ee] hover:bg-[#e8e5de] border border-[#e8e5de] rounded text-left transition-colors cursor-pointer"
-              >
-                <div className="h-6 w-6 rounded-full bg-[#b08945] text-white flex items-center justify-center font-bold text-[10px]">
-                  MG
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-[#1a1917]">Manager (Marcus)</div>
-                  <div className="text-[10px] text-[#79756d]">SLA & Pipeline</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('User')}
-                className="flex items-center gap-1.5 p-2 bg-[#f4f2ee] hover:bg-[#e8e5de] border border-[#e8e5de] rounded text-left transition-colors cursor-pointer"
-              >
-                <div className="h-6 w-6 rounded-full bg-[#c26751] text-white flex items-center justify-center font-bold text-[10px]">
-                  US
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-[#1a1917]">Agent / User (Elena)</div>
-                  <div className="text-[10px] text-[#79756d]">Standard rep</div>
-                </div>
-              </button>
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => handleQuickFill(account)}
+                  className="flex items-center gap-1.5 p-2 bg-[#f4f2ee] hover:bg-[#e8e5de] border border-[#e8e5de] rounded text-left transition-colors cursor-pointer"
+                >
+                  <div className="h-6 w-6 rounded-full bg-[#4a6b82] text-white flex items-center justify-center font-bold text-[10px]">
+                    {account.avatar}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-[#1a1917]">{account.role}</div>
+                    <div className="text-[10px] text-[#79756d] truncate">{account.email}</div>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         </div>

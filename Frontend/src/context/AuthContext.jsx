@@ -1,101 +1,35 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-// Predefined roles and permission matrix
-export const ROLE_PERMISSIONS = {
-  Owner: [
-    'crm.view',
-    'crm.create',
-    'crm.edit',
-    'crm.delete',
-    'crm.export',
-    'crm.values',
-    'rules.manage',
-    'integrations.manage',
-    'audit.view',
-    'users.manage',
-    'roles.manage',
-    'settings.manage'
-  ],
-  Admin: [
-    'crm.view',
-    'crm.create',
-    'crm.edit',
-    'crm.delete',
-    'crm.export',
-    'crm.values',
-    'rules.manage',
-    'integrations.manage',
-    'audit.view',
-    'users.manage',
-    'settings.manage'
-  ],
-  Manager: [
-    'crm.view',
-    'crm.create',
-    'crm.edit',
-    'crm.export',
-    'crm.values',
-    'rules.manage',
-    'audit.view'
-  ],
-  User: [
-    'crm.view',
-    'crm.create',
-    'crm.edit'
-  ]
-};
-
-export const DEMO_USERS = {
-  Owner: {
-    id: 'usr-1',
-    name: 'Alex Mercer',
-    email: 'alex@solaria.io',
-    role: 'Owner',
-    level: 'Owner',
-    avatar: 'AM',
-    tenant: 'Solaria Energy Systems (Tenant #WS-104)'
-  },
-  Admin: {
-    id: 'usr-2',
-    name: 'Sara Chen',
-    email: 'sara@solaria.io',
-    role: 'Admin',
-    level: 'Admin',
-    avatar: 'SC',
-    tenant: 'Solaria Energy Systems (Tenant #WS-104)'
-  },
-  Manager: {
-    id: 'usr-3',
-    name: 'Marcus Vance',
-    email: 'marcus@solaria.io',
-    role: 'Manager',
-    level: 'User',
-    avatar: 'MV',
-    tenant: 'Solaria Energy Systems (Tenant #WS-104)'
-  },
-  User: {
-    id: 'usr-4',
-    name: 'Elena Rostova',
-    email: 'elena@solaria.io',
-    role: 'User',
-    level: 'User',
-    avatar: 'ER',
-    tenant: 'Solaria Energy Systems (Tenant #WS-104)'
-  }
-};
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { api } from '../services/api';
 
 export const AuthContext = createContext(null);
 
+function initials(name = '') {
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'U';
+}
+
+function normalizeUser(user) {
+  if (!user) return null;
+  return { ...user, avatar: initials(user.name) };
+}
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
+    // Only trust a stored user if we also hold a token — otherwise it is stale demo data.
+    if (!localStorage.getItem('omniflow_token')) return null;
     try {
       const saved = localStorage.getItem('omniflow_user');
-      return saved ? JSON.parse(saved) : DEMO_USERS.Owner;
+      return saved ? JSON.parse(saved) : null;
     } catch {
-      return DEMO_USERS.Owner;
+      return null;
     }
   });
-
+  const [permissions, setPermissions] = useState([]);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -107,79 +41,59 @@ export function AuthProvider({ children }) {
     }
   }, [currentUser]);
 
-  // Check if current user has a specific permission
-  const hasPermission = (permission) => {
-    if (!currentUser || !currentUser.role) return false;
-    const permissions = ROLE_PERMISSIONS[currentUser.role] || [];
-    return permissions.includes(permission);
-  };
-
-  // Switch demo role instantly
-  const switchRole = (roleName) => {
-    if (DEMO_USERS[roleName]) {
-      setCurrentUser(DEMO_USERS[roleName]);
-    } else {
-      setCurrentUser((prev) => ({
-        ...prev,
-        role: roleName,
-        level: roleName === 'Owner' ? 'Owner' : roleName === 'Admin' ? 'Admin' : 'User'
-      }));
-    }
-  };
-
-  // Login handler
-  const login = (email, password, isRemember = true, role = 'Owner') => {
-    const user = DEMO_USERS[role] || {
-      id: `usr-${Date.now()}`,
-      name: email.split('@')[0],
-      email,
-      role,
-      level: role === 'Owner' ? 'Owner' : role === 'Admin' ? 'Admin' : 'User',
-      avatar: email.substring(0, 2).toUpperCase(),
-      tenant: 'Solaria Energy Systems (Tenant #WS-104)'
+  // Any 401 from the API tears the session down and returns the user to login.
+  useEffect(() => {
+    api.client.onUnauthorized = () => {
+      setCurrentUser(null);
+      setPermissions([]);
+      localStorage.removeItem('omniflow_user');
     };
-    setCurrentUser(user);
+    return () => {
+      api.client.onUnauthorized = null;
+    };
+  }, []);
+
+  const hasPermission = useCallback(
+    (permission) => {
+      if (!permission) return true;
+      return permissions.includes(permission);
+    },
+    [permissions],
+  );
+
+  const login = async (email, password, isRemember = true) => {
+    const data = await api.auth.login(email, password);
+    setCurrentUser(normalizeUser(data.user));
     setRememberMe(isRemember);
     setSessionExpired(false);
-    return true;
+    return data.user;
   };
 
-  // Signup handler (User becomes Owner)
-  const signup = ({ companyName, name, email }) => {
-    const newOwner = {
-      id: `usr-${Date.now()}`,
-      name,
-      email,
-      role: 'Owner',
-      level: 'Owner',
-      avatar: name.split(' ').map((p) => p[0]).join('').substring(0, 2).toUpperCase() || 'OW',
-      tenant: `${companyName} (Tenant #WS-${Math.floor(100 + Math.random() * 900)})`
-    };
-    setCurrentUser(newOwner);
+  const signup = async ({ companyName, name, email, password }) => {
+    const data = await api.auth.signup(name, email, password);
+    setCurrentUser(normalizeUser(data.user));
+    await api.workspace.bootstrap(companyName);
     setSessionExpired(false);
-    return true;
+    return data.user;
   };
 
   const logout = () => {
+    api.auth.logout();
     setCurrentUser(null);
-    localStorage.removeItem('omniflow_user');
+    setPermissions([]);
   };
 
-  const triggerSessionExpired = () => {
-    setSessionExpired(true);
-  };
-
-  const renewSession = () => {
-    setSessionExpired(false);
-  };
+  const triggerSessionExpired = () => setSessionExpired(true);
+  const renewSession = () => setSessionExpired(false);
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
         setCurrentUser,
+        permissions,
+        setPermissions,
         hasPermission,
-        switchRole,
         login,
         signup,
         logout,
@@ -188,7 +102,6 @@ export function AuthProvider({ children }) {
         renewSession,
         rememberMe,
         setRememberMe,
-        ROLE_PERMISSIONS
       }}
     >
       {children}

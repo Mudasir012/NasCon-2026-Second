@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../lib/auth.js';
 import { requirePermission, workspaceContext } from '../lib/context.js';
-import { createPaymentRequest, getRevenueMetrics, handleStripeWebhook, stripeConfigured } from '../lib/payments.js';
+import { createPaymentRequest, getRevenueMetrics, handleStripeWebhook, listPayments, stripeConfigured } from '../lib/payments.js';
 
 const router = Router();
 
@@ -47,6 +47,11 @@ router.get('/status', (req, res) => {
 router.get('/metrics', requirePermission('crm.view'), async (req, res) => {
   const metrics = await getRevenueMetrics(req.workspace.id);
   res.json(metrics);
+});
+
+router.get('/', requirePermission('crm.view'), async (req, res) => {
+  const rows = await listPayments(req.workspace.id);
+  res.json({ payments: rows });
 });
 
 router.post('/create-link', requirePermission('crm.edit'), async (req, res) => {

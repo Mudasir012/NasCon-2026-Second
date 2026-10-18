@@ -49,6 +49,7 @@ export async function createMember({
     revoked: [],
     openLeadLimit,
     backup,
+    status: 'Active',
     available: true,
     createdAt: new Date().toISOString(),
   });
@@ -64,6 +65,11 @@ export async function updateMember(id, workspaceId, patch) {
     if (patch.name !== undefined) member.name = text(patch.name, 120);
     if (patch.openLeadLimit !== undefined) {
       member.openLeadLimit = patch.openLeadLimit === null ? null : Number(patch.openLeadLimit);
+    }
+    // A status change drives availability, so Busy/On leave/Offline stop new leads (F3.2, F3.3).
+    if (patch.status !== undefined && ['Active', 'Busy', 'On leave', 'Offline'].includes(patch.status)) {
+      member.status = patch.status;
+      if (patch.available === undefined) member.available = patch.status === 'Active';
     }
     if (patch.available !== undefined) member.available = Boolean(patch.available);
     if (patch.backup !== undefined) member.backup = Boolean(patch.backup);

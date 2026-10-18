@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { WorkspaceProvider } from './context/WorkspaceContext';
 import { CRMProvider } from './context/CRMContext';
 import { ToastProvider } from './components/common/Toast';
 import LandingPage from './pages/LandingPage';
@@ -27,7 +28,10 @@ import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage';
 import ForbiddenPage from './pages/error/ForbiddenPage';
 import NotFoundPage from './pages/error/NotFoundPage';
 
+const PUBLIC_ROUTES = ['landing', 'login', 'signup'];
+
 function AppContent() {
+  const { currentUser } = useAuth();
   const [currentRoute, setCurrentRoute] = useState('landing');
 
   // Public Unauthenticated Pages
@@ -41,6 +45,11 @@ function AppContent() {
 
   if (currentRoute === 'signup') {
     return <SignupPage onNavigate={(target) => setCurrentRoute(target)} />;
+  }
+
+  // Every route below requires an authenticated session.
+  if (!currentUser) {
+    return <LoginPage onNavigate={(target) => setCurrentRoute(target)} />;
   }
 
   // Authenticated AppShell Layout
@@ -77,11 +86,13 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <CRMProvider>
-        <ToastProvider>
-          <AppContent />
-        </ToastProvider>
-      </CRMProvider>
+      <WorkspaceProvider>
+        <CRMProvider>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </CRMProvider>
+      </WorkspaceProvider>
     </AuthProvider>
   );
 }

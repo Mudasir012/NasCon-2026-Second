@@ -1,9 +1,9 @@
 import React from 'react';
-import { ShieldAlert, ArrowLeft, RefreshCw } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function ForbiddenPage({ requiredPermission, onBack }) {
-  const { currentUser, switchRole } = useAuth();
+  const { currentUser } = useAuth();
 
   return (
     <div className="min-h-[500px] flex items-center justify-center p-6">
@@ -25,24 +25,12 @@ export default function ForbiddenPage({ requiredPermission, onBack }) {
 
         <div className="p-3.5 bg-[#faf9f6] border border-[#e8e5de] rounded-lg text-xs text-left mb-6">
           <div className="font-semibold text-[#1a1917] mb-1.5 flex items-center gap-1.5">
-            <RefreshCw size={12} className="text-[#4a6b82]" />
-            Test with another role:
+            <Lock size={12} className="text-[#4a6b82]" />
+            Access is granted by your workspace membership
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {['Owner', 'Admin', 'Manager', 'User'].map((role) => (
-              <button
-                key={role}
-                onClick={() => switchRole(role)}
-                className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
-                  currentUser?.role === role
-                    ? 'bg-[#1a1917] text-white border-[#1a1917]'
-                    : 'bg-white text-[#3c3933] border-[#d3cfc7] hover:bg-[#f4f2ee]'
-                }`}
-              >
-                Switch to {role}
-              </button>
-            ))}
-          </div>
+          <p className="text-[#79756d] leading-relaxed">
+            Ask a workspace owner or admin to grant your account the required permission.
+          </p>
         </div>
 
         {onBack && (

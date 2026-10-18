@@ -56,7 +56,7 @@ export default function SignupPage({ onNavigate }) {
     return { text: 'Strong', color: 'bg-[#52796f]', textColor: 'text-[#52796f]' };
   }, [strengthScore]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -82,15 +82,17 @@ export default function SignupPage({ onNavigate }) {
     }
 
     setLoading(true);
-
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await signup({ companyName, name, email, password });
       setSuccess(true);
-      signup({ companyName, name, email });
-      setTimeout(() => {
-        onNavigate('dashboard');
-      }, 1500);
-    }, 800);
+      setTimeout(() => onNavigate('dashboard'), 1200);
+    } catch (err) {
+      setErrorMessage(
+        err.fields ? Object.values(err.fields).join(' ') : err.message || 'Signup failed.',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

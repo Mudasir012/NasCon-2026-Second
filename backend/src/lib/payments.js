@@ -175,6 +175,12 @@ export async function handleStripeWebhook(rawBody, signature) {
   return { ok: true, status: updatedStatus };
 }
 
+/** Full payment ledger for a workspace, newest first. */
+export async function listPayments(workspaceId) {
+  const rows = await payments.where((p) => p.workspaceId === workspaceId);
+  return rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
 /**
  * Distinguishes collected revenue from projected amounts (I2.6, Section 7 definition).
  */

@@ -17,6 +17,9 @@ import { record as audit } from './audit.js';
 const messages = db.collection('messages');
 const contacts = db.collection('contacts');
 
+/** Keywords that opt a contact out of messaging (I1.9). */
+const OPTOUT_KEYWORDS = new Set(['stop', 'stopall', 'unsubscribe', 'opt out', 'optout', 'cancel']);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // WhatsApp Web client (singleton)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -142,6 +145,7 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
   if (existing) return { duplicate: true, message: existing };
 
   const cleanPhone = String(from).replace(/^whatsapp:/i, '').trim();
+  const isOptOut = OPTOUT_KEYWORDS.has(String(body).trim().toLowerCase());
 
   let contact = await contacts.find((c) => c.phone === cleanPhone && c.workspaceId === workspaceId);
   let createdLead = null;
@@ -153,20 +157,28 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
       name: `WhatsApp User (${cleanPhone.slice(-4)})`,
       phone: cleanPhone,
       email: '',
-      optedOut: false,
+      optedOut: isOptOut,
       createdAt: new Date().toISOString(),
     };
     await contacts.insert(contact);
 
-    createdLead = await createLead({
-      workspaceId,
-      input: {
-        name: contact.name,
-        phone: cleanPhone,
-        source: 'whatsapp',
-        notes: `Inbound WhatsApp: "${body}"`,
-      },
-      actorName: 'whatsapp_bot',
+    // An opt-out is not an inquiry, so it never becomes a lead.
+    if (!isOptOut) {
+      createdLead = await createLead({
+        workspaceId,
+        input: {
+          name: contact.name,
+          phone: cleanPhone,
+          source: 'whatsapp',
+          notes: `Inbound WhatsApp: "${body}"`,
+        },
+        actorName: 'whatsapp_bot',
+      });
+    }
+  } else if (isOptOut && !contact.optedOut) {
+    await contacts.mutate((rows) => {
+      const row = rows.find((r) => r.id === contact.id);
+      if (row) row.optedOut = true;
     });
   }
 
@@ -192,7 +204,7 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
     actorId: 'whatsapp_bot',
     action: 'message.received',
     target: msgRecord.id,
-    metadata: { phone: cleanPhone, contactId: contact.id, leadCreated: Boolean(createdLead) },
+    metadata: { phone: cleanPhone, contactId: contact.id, leadCreated: Boolean(createdLead), optedOut: isOptOut },
   });
 
   return { message: msgRecord, contact, lead: createdLead };
@@ -282,6 +294,60 @@ export async function listConversation(contactId, workspaceId) {
 export async function listFailedMessages(workspaceId) {
   const all = await messages.where((m) => m.workspaceId === workspaceId && m.status === 'failed');
   return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Inbox summary: one row per contact with its latest message. Unread counts are not
+ * modelled by the backend, so `unread` is always 0.
+ */
+export async function listConversations(workspaceId) {
+  const allContacts = await contacts.where((c) => c.workspaceId === workspaceId);
+  const allMessages = await messages.where((m) => m.workspaceId === workspaceId);
+
+  return allContacts
+    .map((contact) => {
+      const thread = allMessages
+        .filter((m) => m.contactId === contact.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const last = thread[thread.length - 1] ?? null;
+
+      return {
+        contactId: contact.id,
+        name: contact.name,
+        phone: contact.phone,
+        channel: 'whatsapp',
+        optedOut: Boolean(contact.optedOut),
+        unread: 0,
+        lastMessage: last
+          ? { direction: last.direction, body: last.body, status: last.status, createdAt: last.createdAt }
+          : null,
+      };
+    })
+    .sort((a, b) => String(b.lastMessage?.createdAt ?? '').localeCompare(String(a.lastMessage?.createdAt ?? '')));
+}
+
+/** Toggle a contact's messaging opt-out flag (I1.9). */
+export async function setContactOptOut(contactId, workspaceId, optedOut) {
+  let updated = null;
+
+  await contacts.mutate((rows) => {
+    const contact = rows.find((c) => c.id === contactId && c.workspaceId === workspaceId);
+    if (!contact) return;
+    contact.optedOut = Boolean(optedOut);
+    updated = contact;
+  });
+
+  if (!updated) throw new Error('Contact not found');
+
+  await audit({
+    workspaceId,
+    actorId: 'wa_bot',
+    action: optedOut ? 'contact.opted_out' : 'contact.opted_in',
+    target: contactId,
+    metadata: { phone: updated.phone },
+  });
+
+  return updated;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

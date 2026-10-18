@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { hashPassword, issueToken, requireAuth, verifyPassword } from '../lib/auth.js';
+import { ensureWorkspaceForUser } from '../lib/context.js';
 import { isDemoAccount, seedDemoAccounts } from '../lib/seed.js';
 import { createUser, findUserByEmail, toPublicUser } from '../lib/store.js';
 import { validateLogin, validateSignup } from '../lib/validate.js';
@@ -31,8 +32,11 @@ router.post('/signup', async (req, res) => {
     name,
     email,
     passwordHash: await hashPassword(password),
-    role: role ?? 'student',
+    role: role ?? 'owner',
   });
+
+  // F1.1: signing up creates the workspace and makes the first user its Owner.
+  await ensureWorkspaceForUser(user);
 
   return res.status(201).json({
     token: issueToken(user),

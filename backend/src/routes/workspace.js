@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { record as audit } from '../lib/audit.js';
 import { requireAuth } from '../lib/auth.js';
-import { requirePermission, workspaceContext } from '../lib/context.js';
+import { ensureWorkspaceForUser, requirePermission, workspaceContext } from '../lib/context.js';
 import { describe, listMembers, permissionsFor, removeMember, updateMember } from '../lib/members.js';
 import { LEVELS, LEVEL_LABELS, PERMISSIONS, outranks } from '../lib/permissions.js';
 import { createRole, listRoles, removeRole, updateRole } from '../lib/roles.js';
@@ -9,22 +9,36 @@ import { getSettings, saveSettings } from '../lib/settings.js';
 
 const router = Router();
 
-router.use(requireAuth, workspaceContext);
+async function workspacePayload(workspace, member, permissions) {
+  const settings = await getSettings(workspace.id);
+  const members = await listMembers(workspace.id);
 
-router.get('/', async (req, res) => {
-  const settings = await getSettings(req.workspace.id);
-  const members = await listMembers(req.workspace.id);
-
-  res.json({
-    workspace: req.workspace,
-    member: describe(req.member, req.permissions),
+  return {
+    workspace,
+    member: describe(member, permissions),
     settings,
     members: await Promise.all(
-      members.map(async (member) => describe(member, await permissionsFor(member))),
+      members.map(async (row) => describe(row, await permissionsFor(row))),
     ),
     levels: LEVELS.map((level) => ({ value: level, label: LEVEL_LABELS[level] })),
     permissions: PERMISSIONS,
-  });
+  };
+}
+
+/**
+ * Give a freshly signed-up account a workspace to own (idempotent). Runs before the
+ * workspace guard below because a brand-new account has no membership yet.
+ */
+router.post('/bootstrap', requireAuth, async (req, res) => {
+  const { workspaceName } = req.body ?? {};
+  const { workspace, member } = await ensureWorkspaceForUser(req.user, { workspaceName });
+  res.json(await workspacePayload(workspace, member, await permissionsFor(member)));
+});
+
+router.use(requireAuth, workspaceContext);
+
+router.get('/', async (req, res) => {
+  res.json(await workspacePayload(req.workspace, req.member, req.permissions));
 });
 
 router.put('/settings', requirePermission('assignment.manage'), async (req, res) => {

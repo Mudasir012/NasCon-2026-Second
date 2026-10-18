@@ -5,10 +5,22 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
+function toQuery(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.append(key, value);
+    }
+  });
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
 class ApiClient {
   constructor() {
     this.token = localStorage.getItem('omniflow_token') || null;
     this.workspaceId = localStorage.getItem('omniflow_workspace_id') || null;
+    this.onUnauthorized = null;
   }
 
   setToken(token) {
@@ -33,25 +45,30 @@ class ApiClient {
 
     const url = `${API_BASE}${endpoint}`;
 
+    let response;
     try {
-      const response = await fetch(url, { ...options, headers });
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const error = new Error(data?.error || `Request failed with status ${response.status}`);
-        error.status = response.status;
-        error.fields = data?.fields;
-        throw error;
-      }
-
-      return data;
+      response = await fetch(url, { ...options, headers });
     } catch (err) {
-      // In development or when offline, fallback gracefully with informational message
-      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-        console.warn(`[api] Backend unreachable at ${url}. Operating with client fallback.`);
-      }
+      console.warn(`[api] Backend unreachable at ${url}.`);
       throw err;
     }
+
+    const data = await response.json().catch(() => null);
+
+    if (response.status === 401 && this.token && !endpoint.startsWith('/auth/')) {
+      this.setToken(null);
+      this.setWorkspaceId(null);
+      if (this.onUnauthorized) this.onUnauthorized();
+    }
+
+    if (!response.ok) {
+      const error = new Error(data?.error || `Request failed with status ${response.status}`);
+      error.status = response.status;
+      error.fields = data?.fields;
+      throw error;
+    }
+
+    return data;
   }
 
   get(endpoint, headers) {
@@ -83,7 +100,7 @@ export const api = {
   // Health
   health: () => client.get('/health'),
 
-  // Auth (F1.1)
+  // Auth
   auth: {
     login: async (email, password) => {
       const data = await client.post('/auth/login', { email, password });
@@ -95,23 +112,23 @@ export const api = {
       if (data?.token) client.setToken(data.token);
       return data;
     },
+    me: () => client.get('/auth/me'),
     logout: () => {
       client.setToken(null);
       client.setWorkspaceId(null);
     },
   },
 
-  // CRM & Leads (F2.1 - F2.8, F3.1 - F3.7)
+  // CRM & Leads
   crm: {
     getMeta: () => client.get('/crm/meta'),
     getStats: () => client.get('/crm/stats'),
-    listLeads: (params = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return client.get(`/crm/leads${query ? `?${query}` : ''}`);
-    },
+    listLeads: (params = {}) => client.get(`/crm/leads${toQuery(params)}`),
     getLead: (id) => client.get(`/crm/leads/${id}`),
     createPublicLead: (data) => client.post('/crm/demo-request', data),
     createLead: (data) => client.post('/crm/leads', data),
+    updateLead: (id, patch) => client.patch(`/crm/leads/${id}`, patch),
+    deleteLead: (id) => client.delete(`/crm/leads/${id}`),
     acknowledgeLead: (id) => client.post(`/crm/leads/${id}/acknowledge`),
     reassignLead: (id, assigneeId) => client.post(`/crm/leads/${id}/assign`, { memberId: assigneeId }),
     getRecoveryQueue: () => client.get('/crm/recovery-queue'),
@@ -119,43 +136,57 @@ export const api = {
     getSavedLists: () => client.get('/crm/saved-lists'),
     createSavedList: (name, filters) => client.post('/crm/saved-lists', { name, filters }),
     updateStage: (id, stage) => client.patch(`/crm/leads/${id}`, { stage }),
+    listActivities: (params = {}) => client.get(`/crm/activities${toQuery(params)}`),
     addActivity: (id, activity) => client.post('/crm/activities', { leadId: id, ...activity }),
+    getAlerts: () => client.get('/crm/alerts'),
   },
 
-  // Workspace & Members (F1.2, F1.3, F3.2)
+  // Workspace & Members
   workspace: {
     get: () => client.get('/workspace'),
+    bootstrap: (workspaceName) => client.post('/workspace/bootstrap', { workspaceName }),
     updateSettings: (settings) => client.put('/workspace/settings', settings),
     listMembers: () => client.get('/workspace/members'),
     updateMember: (id, patch) => client.patch(`/workspace/members/${id}`, patch),
+    deleteMember: (id) => client.delete(`/workspace/members/${id}`),
+    listRoles: () => client.get('/workspace/roles'),
+    createRole: (data) => client.post('/workspace/roles', data),
+    updateRole: (id, patch) => client.patch(`/workspace/roles/${id}`, patch),
+    deleteRole: (id) => client.delete(`/workspace/roles/${id}`),
   },
 
-  // Payments / Stripe (I2.1 - I2.8)
+  // Payments / Stripe
   payments: {
+    list: () => client.get('/payments'),
     getStatus: () => client.get('/payments/status'),
     getMetrics: () => client.get('/payments/metrics'),
     createLink: (data) => client.post('/payments/create-link', data),
     simulateWebhook: (providerRef, status) => client.post('/payments/simulate-webhook', { providerRef, status }),
   },
 
-  // WhatsApp / Twilio (I1.1 - I1.9)
+  // WhatsApp
   whatsapp: {
+    info: () => client.get('/whatsapp/info'),
+    listConversations: () => client.get('/whatsapp/conversations'),
     simulateIncoming: (from, body) => client.post('/whatsapp/simulate-incoming', { from, body }),
     getConversation: (contactId) => client.get(`/whatsapp/conversation/${contactId}`),
     sendMessage: (contactId, body) => client.post('/whatsapp/send', { contactId, body }),
     getFailures: () => client.get('/whatsapp/failures'),
     retryMessage: (id) => client.post(`/whatsapp/messages/${id}/retry`),
+    setOptOut: (contactId, optedOut) => client.post(`/whatsapp/contacts/${contactId}/opt-out`, { optedOut }),
   },
 
-  // Calendar / Google (I3.1 - I3.7)
+  // Calendar / Google
   calendar: {
-    getAuthUrl: () => client.get('/calendar/auth-url'),
+    getStatus: () => client.get('/calendar/status'),
+    getAuthUrl: () => client.get('/calendar/authorize'),
+    disconnect: () => client.delete('/calendar/connection'),
     bookAppointment: (data) => client.post('/calendar/book', data),
-    getBusySlots: (params) => client.get('/calendar/busy', params),
+    getBusySlots: (params = {}) => client.get(`/calendar/busy${toQuery(params)}`),
   },
 
-  // Audit Log (F4.1 - F4.3)
+  // Audit Log
   audit: {
-    list: () => client.get('/audit'),
+    list: (params = {}) => client.get(`/audit${toQuery(params)}`),
   },
 };

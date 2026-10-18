@@ -5,12 +5,12 @@ import { config } from '../src/config.js';
 import { hashPassword, issueToken, verifyPassword } from '../src/lib/auth.js';
 
 test('a password round trips through the hash and never appears in it', async () => {
-  const hash = await hashPassword('Student123');
+  const hash = await hashPassword('Password123');
 
-  assert.notEqual(hash, 'Student123');
+  assert.notEqual(hash, 'Password123');
   assert.match(hash, /^\$2[aby]\$/);
-  assert.equal(await verifyPassword('Student123', hash), true);
-  assert.equal(await verifyPassword('student123', hash), false);
+  assert.equal(await verifyPassword('Password123', hash), true);
+  assert.equal(await verifyPassword('password123', hash), false);
   assert.equal(await verifyPassword('', hash), false);
 });
 

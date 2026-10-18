@@ -6,9 +6,11 @@ import { config } from '../config.js';
 import {
   handleIncomingMessage,
   listConversation,
+  listConversations,
   listFailedMessages,
   retryFailedMessage,
   sendOutboundMessage,
+  setContactOptOut,
   updateDeliveryStatus,
 } from '../lib/whatsapp.js';
 import { db } from '../lib/db.js';
@@ -126,6 +128,21 @@ router.post('/simulate-incoming', async (req, res) => {
 });
 
 router.use(requireAuth, workspaceContext);
+
+router.get('/conversations', requirePermission('crm.view'), async (req, res) => {
+  const conversations = await listConversations(req.workspace.id);
+  res.json({ conversations });
+});
+
+router.post('/contacts/:id/opt-out', requirePermission('crm.edit'), async (req, res) => {
+  try {
+    const optedOut = req.body?.optedOut !== false;
+    const contact = await setContactOptOut(req.params.id, req.workspace.id, optedOut);
+    res.json({ contact });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 router.get('/info', requirePermission('crm.view'), (req, res) => {
   res.json({

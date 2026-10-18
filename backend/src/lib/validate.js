@@ -1,5 +1,5 @@
-/** Roles a visitor may choose at signup. `admin` is deliberately absent. */
-export const ROLES = ['student', 'parent', 'faculty'];
+/** The first signup becomes the workspace Owner; levels are assigned after that. */
+export const ROLES = ['owner'];
 
 export const ADMIN_ROLE = 'admin';
 
