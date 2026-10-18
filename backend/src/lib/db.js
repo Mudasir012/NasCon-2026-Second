@@ -25,6 +25,9 @@ export async function initMongo() {
     mongoDb = mongoClient.db();
     isMongoConnected = true;
     console.log(`[db] Connected to MongoDB database: ${mongoDb.databaseName}`);
+    import('../models/schemas.js')
+      .then(({ ensureIndexes }) => ensureIndexes(mongoDb))
+      .catch(() => {});
     return mongoDb;
   } catch (err) {
     isMongoConnected = false;
