@@ -1,12 +1,15 @@
+import { createHmac } from 'node:crypto';
 import { Router } from 'express';
 import { requireAuth } from '../lib/auth.js';
 import { requirePermission, workspaceContext } from '../lib/context.js';
+import { config } from '../config.js';
 import {
   handleIncomingMessage,
   listConversation,
   listFailedMessages,
   retryFailedMessage,
   sendOutboundMessage,
+  twilioConfigured,
   updateDeliveryStatus,
 } from '../lib/whatsapp.js';
 import { db } from '../lib/db.js';
@@ -14,29 +17,52 @@ import { db } from '../lib/db.js';
 const router = Router();
 
 /**
+ * Validate Twilio X-Twilio-Signature header (I1.2 - forgery protection).
+ * Only enforced when real Twilio credentials are present.
+ */
+function validateTwilioSignature(req) {
+  if (!twilioConfigured()) return true; // Skip in simulator mode
+  const signature = req.headers['x-twilio-signature'];
+  if (!signature) return false;
+  const authToken = config.twilio.authToken;
+  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+  const params = req.body ?? {};
+  const sortedKeys = Object.keys(params).sort();
+  const data = url + sortedKeys.map((k) => `${k}${params[k]}`).join('');
+  const expected = createHmac('sha1', authToken).update(data).digest('base64');
+  return signature === expected;
+}
+
+/**
  * Public Twilio Webhook (I1.1, I1.2, I1.5, Rubric Criterion 5).
- * Validates against forged/empty payloads and prevents duplicate processing.
+ * Validates X-Twilio-Signature, checks for empty/forged payloads, prevents duplicate processing.
  */
 router.post('/webhook', async (req, res) => {
   try {
     const { From, To, Body, MessageSid } = req.body ?? {};
 
-    // Forgery check: Twilio payloads always require From or Body or MessageSid
+    // Signature validation against forgery (I1.2)
+    if (!validateTwilioSignature(req)) {
+      return res.status(403).type('text/xml').send('<Response><Message>Forbidden: invalid signature</Message></Response>');
+    }
+
+    // Payload sanity check
     if (!From && !Body && !MessageSid && !req.body?.from) {
-      return res.status(403).json({ error: 'Forged or invalid Twilio webhook payload' });
+      return res.status(400).type('text/xml').send('<Response><Message>Bad request</Message></Response>');
     }
 
     const workspaces = await db.collection('workspaces').read();
     const workspaceId = workspaces[0]?.id || 'default_ws';
 
-    const result = await handleIncomingMessage({
-      from: From || req.body?.from || '+15550192',
+    await handleIncomingMessage({
+      from: From || req.body?.from,
       to: To || req.body?.to || 'whatsapp:+14155238886',
-      body: Body || req.body?.body || 'Hello',
+      body: Body || req.body?.body || '',
       messageSid: MessageSid || req.body?.messageSid || `SM_${Date.now()}`,
       workspaceId,
     });
 
+    // Twilio expects an empty TwiML response for webhook acknowledgement
     res.type('text/xml').send('<Response></Response>');
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -88,6 +114,17 @@ router.post('/simulate-incoming', async (req, res) => {
 
 router.use(requireAuth, workspaceContext);
 
+router.get('/info', requirePermission('crm.view'), (req, res) => {
+  res.json({
+    configured: twilioConfigured(),
+    mode: twilioConfigured() ? 'live' : 'simulator',
+    from: config.twilio.whatsappNumber || 'whatsapp:+14155238886',
+    description: twilioConfigured()
+      ? 'Twilio credentials configured. Real WhatsApp messages will be sent and received.'
+      : 'No Twilio credentials. Using simulator mode — messages are stored but not delivered.',
+  });
+});
+
 router.get('/failures', requirePermission('crm.view'), async (req, res) => {
   const failures = await listFailedMessages(req.workspace.id);
   res.json({ failures });
@@ -102,7 +139,7 @@ router.post('/messages/:id/retry', requirePermission('crm.edit'), async (req, re
     });
     res.json({ ok: true, message: retried });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: err.message, record: err.record ?? null });
   }
 });
 
@@ -120,9 +157,9 @@ router.post('/send', requirePermission('crm.edit'), async (req, res) => {
       body,
       employeeId: req.member.id,
     });
-    res.status(201).json({ message });
+    res.status(201).json({ message, mode: message.simulatorMode ? 'simulator' : 'live' });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: err.message, record: err.record ?? null });
   }
 });
 
