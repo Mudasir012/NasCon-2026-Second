@@ -1,124 +1,96 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Inbox,
   Plus,
   Clock,
   CheckCircle2,
-  AlertTriangle,
   MessageSquare,
   Globe,
   UserPlus,
   Search,
-  Filter,
-  ArrowRight
+  AlertCircle,
 } from 'lucide-react';
+import { useCRM } from '../../context/CRMContext';
+
+const SOURCE_LABELS = {
+  website: 'Web Form',
+  whatsapp: 'WhatsApp',
+  sms: 'SMS',
+  'walk-in': 'Walk-in',
+  phone: 'Phone',
+  referral: 'Referral',
+  event: 'Event',
+  manual: 'Manual Entry',
+};
+
+function SourceBadge({ source }) {
+  const label = SOURCE_LABELS[source] ?? source;
+  const style =
+    source === 'whatsapp'
+      ? 'bg-[#ebf1f5] text-[#4a6b82] border-[#4a6b82]/30'
+      : source === 'website'
+        ? 'bg-[#eaf0ee] text-[#52796f] border-[#52796f]/30'
+        : 'bg-[#f7f1ea] text-[#b08945] border-[#b08945]/30';
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${style}`}>
+      {source === 'whatsapp' && <MessageSquare size={11} />}
+      {source === 'website' && <Globe size={11} />}
+      {source === 'manual' && <UserPlus size={11} />}
+      <span>{label}</span>
+    </span>
+  );
+}
 
 export default function LeadsPage({ onNavigate }) {
-  const [leads, setLeads] = useState([
-    {
-      id: 'LD-101',
-      name: 'Sarah Jenkins',
-      email: 's.jenkins@apexroof.com',
-      phone: '+1 415 992 0184',
-      source: 'WhatsApp',
-      inquiry: 'Commercial Solar Installation (45 kW)',
-      assignedTo: 'Marcus Vance',
-      assignedAt: '2m ago',
-      timeRemaining: 34,
-      status: 'Pending Acknowledgment'
-    },
-    {
-      id: 'LD-102',
-      name: 'Michael Chang',
-      email: 'mchang@novabuilders.io',
-      phone: '+1 408 551 2290',
-      source: 'Web Form',
-      inquiry: 'Inverter Upgrade & Battery Backup',
-      assignedTo: 'Elena Rostova',
-      assignedAt: '8m ago',
-      timeRemaining: 0,
-      status: 'Acknowledged'
-    },
-    {
-      id: 'LD-103',
-      name: 'Highland Dental Associates',
-      email: 'office@highlanddental.com',
-      phone: '+1 212 884 9310',
-      source: 'Manual Entry',
-      inquiry: 'Clinic HVAC Solar Integration',
-      assignedTo: 'Marcus Vance',
-      assignedAt: '1m ago',
-      timeRemaining: 52,
-      status: 'Pending Acknowledgment'
-    },
-    {
-      id: 'LD-104',
-      name: 'David K. Ross',
-      email: 'david@rossrealty.net',
-      phone: '+1 617 339 4481',
-      source: 'WhatsApp',
-      inquiry: 'Multi-family residential quote',
-      assignedTo: 'Jordan Reed',
-      assignedAt: '25m ago',
-      timeRemaining: 0,
-      status: 'Acknowledged'
-    }
-  ]);
+  const { leads, sources, loading, error, acknowledgeLead, createLead } = useCRM();
 
   const [sourceFilter, setSourceFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', source: 'Manual Entry', inquiry: '' });
+  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', source: 'manual', programme: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
-  // Countdown timer simulation for unacknowledged leads (F3.4)
   useEffect(() => {
-    const timer = setInterval(() => {
-      setLeads((prev) =>
-        prev.map((lead) => {
-          if (lead.status === 'Pending Acknowledgment' && lead.timeRemaining > 0) {
-            return { ...lead, timeRemaining: lead.timeRemaining - 1 };
-          }
-          return lead;
-        })
-      );
-    }, 1000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const handleAcknowledge = (id) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, status: 'Acknowledged', timeRemaining: 0 } : l))
-    );
+  const secondsRemaining = (lead) => {
+    if (!lead.ackDeadline || lead.acknowledgedAt) return 0;
+    return Math.max(0, Math.round((new Date(lead.ackDeadline).getTime() - now) / 1000));
   };
 
-  const handleCreateLead = (e) => {
+  const handleAcknowledge = async (id) => {
+    try {
+      await acknowledgeLead(id);
+    } catch (err) {
+      console.warn('[leads] acknowledge failed:', err.message);
+    }
+  };
+
+  const handleCreateLead = async (e) => {
     e.preventDefault();
     if (!newLead.name) return;
-
-    const created = {
-      id: `LD-${Math.floor(105 + Math.random() * 900)}`,
-      name: newLead.name,
-      email: newLead.email || 'lead@intake.com',
-      phone: newLead.phone || '+1 555 0192',
-      source: newLead.source,
-      inquiry: newLead.inquiry || 'Service Request',
-      assignedTo: 'Marcus Vance',
-      assignedAt: 'Just now',
-      timeRemaining: 60,
-      status: 'Pending Acknowledgment'
-    };
-
-    setLeads([created, ...leads]);
-    setIsModalOpen(false);
-    setNewLead({ name: '', email: '', phone: '', source: 'Manual Entry', inquiry: '' });
+    setSubmitting(true);
+    try {
+      await createLead(newLead);
+      setIsModalOpen(false);
+      setNewLead({ name: '', email: '', phone: '', source: 'manual', programme: '' });
+    } catch (err) {
+      console.warn('[leads] create failed:', err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const filteredLeads = leads.filter((l) => {
-    const matchesSource = sourceFilter === 'ALL' || l.source === sourceFilter;
+  const filteredLeads = leads.filter((lead) => {
+    const matchesSource = sourceFilter === 'ALL' || lead.source === sourceFilter;
+    const query = searchQuery.toLowerCase();
     const matchesQuery =
-      l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.inquiry.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.assignedTo.toLowerCase().includes(searchQuery.toLowerCase());
+      (lead.name ?? '').toLowerCase().includes(query) ||
+      (lead.programme ?? '').toLowerCase().includes(query) ||
+      (lead.assigneeName ?? '').toLowerCase().includes(query);
     return matchesSource && matchesQuery;
   });
 
@@ -133,16 +105,21 @@ export default function LeadsPage({ onNavigate }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a1917] text-white rounded-md text-xs font-semibold hover:bg-[#33302a] transition-all"
-          >
-            <Plus size={14} />
-            <span>Create Inbound Lead</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a1917] text-white rounded-md text-xs font-semibold hover:bg-[#33302a] transition-all"
+        >
+          <Plus size={14} />
+          <span>Create Inbound Lead</span>
+        </button>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-[#c26751]/30 bg-[#faece8] px-3 py-2 text-xs text-[#c26751]">
+          <AlertCircle size={14} />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Filters Bar (F2.6, F3.1) */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 border border-[#e8e5de] rounded-lg">
@@ -150,16 +127,16 @@ export default function LeadsPage({ onNavigate }) {
           <Search size={14} className="text-[#79756d]" />
           <input
             type="text"
-            placeholder="Search leads, inquiry, or assignee..."
+            placeholder="Search leads, project, or assignee..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="text-xs text-[#1a1917] outline-none bg-transparent w-64"
           />
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-[#79756d] font-medium">Source Filter:</span>
-          {['ALL', 'WhatsApp', 'Web Form', 'Manual Entry'].map((src) => (
+          {['ALL', ...sources].map((src) => (
             <button
               key={src}
               onClick={() => setSourceFilter(src)}
@@ -169,7 +146,7 @@ export default function LeadsPage({ onNavigate }) {
                   : 'bg-white text-[#79756d] border-[#d3cfc7] hover:bg-[#f4f2ee]'
               }`}
             >
-              {src}
+              {src === 'ALL' ? 'ALL' : SOURCE_LABELS[src] ?? src}
             </button>
           ))}
         </div>
@@ -189,83 +166,89 @@ export default function LeadsPage({ onNavigate }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#e8e5de]">
-            {filteredLeads.map((lead) => {
-              const isPending = lead.status === 'Pending Acknowledgment';
-              return (
-                <tr key={lead.id} className="hover:bg-[#faf9f6]">
-                  <td className="p-3">
-                    <div className="font-bold text-[#1a1917]">{lead.name}</div>
-                    <div className="text-[11px] text-[#79756d] font-mono">{lead.id} • {lead.email}</div>
-                  </td>
-
-                  <td className="p-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                      lead.source === 'WhatsApp' ? 'bg-[#ebf1f5] text-[#4a6b82] border-[#4a6b82]/30' :
-                      lead.source === 'Web Form' ? 'bg-[#eaf0ee] text-[#52796f] border-[#52796f]/30' :
-                      'bg-[#f7f1ea] text-[#b08945] border-[#b08945]/30'
-                    }`}>
-                      {lead.source === 'WhatsApp' && <MessageSquare size={11} />}
-                      {lead.source === 'Web Form' && <Globe size={11} />}
-                      {lead.source === 'Manual Entry' && <UserPlus size={11} />}
-                      <span>{lead.source}</span>
-                    </span>
-                  </td>
-
-                  <td className="p-3 text-[#3c3933]">
-                    <div className="font-medium">{lead.inquiry}</div>
-                    <div className="text-[11px] text-[#a8a49c]">Assigned {lead.assignedAt}</div>
-                  </td>
-
-                  <td className="p-3">
-                    <div className="font-semibold text-[#1a1917]">{lead.assignedTo}</div>
-                    <div className="text-[10px] text-[#52796f]">Available Rep (Cap: 3/5)</div>
-                  </td>
-
-                  <td className="p-3">
-                    {isPending ? (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#faece8] border border-[#c26751]/30 text-[#c26751] font-mono font-bold text-xs">
-                        <Clock size={12} />
-                        <span>{lead.timeRemaining}s remaining</span>
+            {loading && leads.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-[#79756d]">Loading leads…</td>
+              </tr>
+            ) : filteredLeads.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-[#79756d]">
+                  No leads match the current filters.
+                </td>
+              </tr>
+            ) : (
+              filteredLeads.map((lead) => {
+                const isPending = !lead.acknowledgedAt;
+                const remaining = secondsRemaining(lead);
+                return (
+                  <tr key={lead.id} className="hover:bg-[#faf9f6]">
+                    <td className="p-3">
+                      <div className="font-bold text-[#1a1917]">{lead.name}</div>
+                      <div className="text-[11px] text-[#79756d] font-mono">
+                        {lead.id.slice(0, 8)} • {lead.email || lead.phone || 'no contact'}
                       </div>
-                    ) : (
-                      <div className="inline-flex items-center gap-1 text-[#52796f] font-semibold text-xs">
-                        <CheckCircle2 size={13} />
-                        <span>Acknowledged</span>
-                      </div>
-                    )}
-                  </td>
+                    </td>
 
-                  <td className="p-3 text-right">
-                    {isPending ? (
-                      <button
-                        onClick={() => handleAcknowledge(lead.id)}
-                        className="px-3 py-1 bg-[#1a1917] text-white rounded text-xs font-semibold hover:bg-[#33302a] transition-all"
-                      >
-                        Acknowledge
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => onNavigate && onNavigate('opportunity')}
-                        className="px-2.5 py-1 text-[#4a6b82] hover:text-[#1a1917] text-xs font-semibold hover:underline"
-                      >
-                        Open Record →
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+                    <td className="p-3">
+                      <SourceBadge source={lead.source} />
+                    </td>
+
+                    <td className="p-3 text-[#3c3933]">
+                      <div className="font-medium">{lead.programme || lead.notes || '—'}</div>
+                      <div className="text-[11px] text-[#a8a49c]">Stage: {lead.stage}</div>
+                    </td>
+
+                    <td className="p-3">
+                      <div className="font-semibold text-[#1a1917]">{lead.assigneeName || 'Unassigned'}</div>
+                      <div className="text-[10px] text-[#52796f]">Single ownership guaranteed</div>
+                    </td>
+
+                    <td className="p-3">
+                      {isPending ? (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#faece8] border border-[#c26751]/30 text-[#c26751] font-mono font-bold text-xs">
+                          <Clock size={12} />
+                          <span>{remaining}s remaining</span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1 text-[#52796f] font-semibold text-xs">
+                          <CheckCircle2 size={13} />
+                          <span>Acknowledged</span>
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-right">
+                      {isPending ? (
+                        <button
+                          onClick={() => handleAcknowledge(lead.id)}
+                          className="px-3 py-1 bg-[#1a1917] text-white rounded text-xs font-semibold hover:bg-[#33302a] transition-all"
+                        >
+                          Acknowledge
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onNavigate && onNavigate('opportunity')}
+                          className="px-2.5 py-1 text-[#4a6b82] hover:text-[#1a1917] text-xs font-semibold hover:underline"
+                        >
+                          Open Record →
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal: Inbound Lead Intake Simulator */}
+      {/* Modal: Inbound Lead Intake */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md bg-white border border-[#e8e5de] rounded-xl shadow-lg p-6">
-            <h3 className="text-base font-bold text-[#1a1917] mb-1">Simulate Inbound Lead Capture (F3.1)</h3>
+            <h3 className="text-base font-bold text-[#1a1917] mb-1">Capture Inbound Lead (F3.1)</h3>
             <p className="text-xs text-[#79756d] mb-4">
-              Enter details or select an intake channel to test the automated assignment round-robin.
+              Creates a lead via the API and triggers automated round-robin assignment.
             </p>
 
             <form onSubmit={handleCreateLead} className="space-y-3 text-xs">
@@ -281,6 +264,27 @@ export default function LeadsPage({ onNavigate }) {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-[#1a1917] mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newLead.email}
+                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                    className="w-full p-2 border border-[#d3cfc7] rounded bg-white text-[#1a1917] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#1a1917] mb-1">Phone</label>
+                  <input
+                    type="text"
+                    value={newLead.phone}
+                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                    className="w-full p-2 border border-[#d3cfc7] rounded bg-white text-[#1a1917] outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block font-semibold text-[#1a1917] mb-1">Intake Source Channel (F3.1)</label>
                 <select
@@ -288,9 +292,11 @@ export default function LeadsPage({ onNavigate }) {
                   onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
                   className="w-full p-2 border border-[#d3cfc7] rounded bg-white text-[#1a1917] outline-none"
                 >
-                  <option value="Manual Entry">Manual Entry</option>
-                  <option value="WhatsApp">Twilio WhatsApp Sandbox</option>
-                  <option value="Web Form">Public Website Contact Form</option>
+                  <option value="manual">Manual Entry</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="website">Public Website Form</option>
+                  <option value="phone">Phone</option>
+                  <option value="referral">Referral</option>
                 </select>
               </div>
 
@@ -299,8 +305,8 @@ export default function LeadsPage({ onNavigate }) {
                 <input
                   type="text"
                   placeholder="e.g. 50kW Commercial Solar Roof Inspection"
-                  value={newLead.inquiry}
-                  onChange={(e) => setNewLead({ ...newLead, inquiry: e.target.value })}
+                  value={newLead.programme}
+                  onChange={(e) => setNewLead({ ...newLead, programme: e.target.value })}
                   className="w-full p-2 border border-[#d3cfc7] rounded bg-white text-[#1a1917] outline-none"
                 />
               </div>
@@ -315,9 +321,10 @@ export default function LeadsPage({ onNavigate }) {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#1a1917] text-white font-semibold rounded hover:bg-[#33302a]"
+                  disabled={submitting}
+                  className="px-4 py-1.5 bg-[#1a1917] text-white font-semibold rounded hover:bg-[#33302a] disabled:opacity-50"
                 >
-                  Dispatch to Round-Robin
+                  {submitting ? 'Dispatching…' : 'Dispatch to Round-Robin'}
                 </button>
               </div>
             </form>

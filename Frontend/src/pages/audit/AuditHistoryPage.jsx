@@ -20,6 +20,11 @@ import ForbiddenPage from '../error/ForbiddenPage';
 export default function AuditHistoryPage({ onNavigate }) {
   const { hasPermission } = useAuth();
 
+  // Filter States
+  const [eventTypeFilter, setEventTypeFilter] = useState('all');
+  const [actorFilter, setActorFilter] = useState('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState('7d');
+
   // Access denied state for users without 'audit.view'
   if (!hasPermission('audit.view')) {
     return (
@@ -29,11 +34,6 @@ export default function AuditHistoryPage({ onNavigate }) {
       />
     );
   }
-
-  // Filter States
-  const [eventTypeFilter, setEventTypeFilter] = useState('all');
-  const [actorFilter, setActorFilter] = useState('all');
-  const [dateRangeFilter, setDateRangeFilter] = useState('7d');
 
   // Realistic Audit Trail Records (F4.1, F4.2, F4.3)
   const auditLogs = [

@@ -28,8 +28,6 @@ import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage';
 import ForbiddenPage from './pages/error/ForbiddenPage';
 import NotFoundPage from './pages/error/NotFoundPage';
 
-const PUBLIC_ROUTES = ['landing', 'login', 'signup'];
-
 function AppContent() {
   const { currentUser } = useAuth();
   const [currentRoute, setCurrentRoute] = useState('landing');

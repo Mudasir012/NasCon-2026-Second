@@ -1,98 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import {
-  AlertOctagon,
-  Clock,
-  UserCheck,
-  RotateCcw,
-  ShieldAlert,
-  ArrowRight,
-  Filter,
-  CheckCircle2,
-  Users
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AlertOctagon, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useWorkspace } from '../../context/WorkspaceContext';
 
-export default function RecoveryQueuePage({ onNavigate }) {
-  const [queueItems, setQueueItems] = useState([
-    {
-      id: 'RC-501',
-      leadId: 'LD-881',
-      customerName: 'Crestline Medical Clinic',
-      contact: '+1 415 882 1190',
-      intakeSource: 'Twilio WhatsApp',
-      currentAssignee: 'Marcus Vance',
-      escalationCount: 2,
-      timeInQueue: '14m 22s',
-      reason: 'Unacknowledged beyond 45s SLA window (Tier 1 & Tier 2 timed out)',
-      severity: 'high'
-    },
-    {
-      id: 'RC-502',
-      leadId: 'LD-884',
-      customerName: 'Apex Precision Logistics',
-      contact: 'd.ross@apexlogistics.com',
-      intakeSource: 'Web Form',
-      currentAssignee: 'Jordan Reed',
-      escalationCount: 1,
-      timeInQueue: '26m 10s',
-      reason: 'Assignee set to On leave; automated reassignment pending available slot',
-      severity: 'medium'
-    },
-    {
-      id: 'RC-503',
-      leadId: 'LD-889',
-      customerName: 'Highland Estates Solar Project',
-      contact: '+1 617 449 0012',
-      intakeSource: 'Phone Call Log',
-      currentAssignee: 'Elena Rostova',
-      escalationCount: 3,
-      timeInQueue: '48m 05s',
-      reason: 'Untouched for configured idle threshold (30m with zero recorded customer activity)',
-      severity: 'high'
-    }
-  ]);
+export default function RecoveryQueuePage() {
+  const { members } = useWorkspace();
 
-  const [members, setMembers] = useState([]);
+  const [queueItems, setQueueItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [notificationMsg, setNotificationMsg] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadData() {
-      try {
-        const [qRes, mRes] = await Promise.allSettled([
-          api.crm.getRecoveryQueue(),
-          api.workspace.listMembers()
-        ]);
-        if (mounted) {
-          if (qRes.status === 'fulfilled' && qRes.value?.queue?.length > 0) {
-            setQueueItems(qRes.value.queue);
-          }
-          if (mRes.status === 'fulfilled' && mRes.value?.members) {
-            setMembers(mRes.value.members);
-          }
-        }
-      } catch (err) {
-        // Fallback remains active
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.crm.getRecoveryQueue();
+      setQueueItems(res?.queue ?? []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    loadData();
-    return () => { mounted = false; };
   }, []);
 
-  const handleReassign = async (id, targetRepName, targetRepId) => {
-    setQueueItems((prev) => prev.filter((item) => item.id !== id && item.leadId !== id));
-    setNotificationMsg(`Lead successfully recovered and locked to ${targetRepName}. Concurrency lock applied (F3.8).`);
+  useEffect(() => {
+    load();
+  }, [load]);
 
+  const handleReassign = async (leadId, targetRepName, targetRepId) => {
+    if (!targetRepId) return;
     try {
-      if (targetRepId) {
-        await api.crm.recoverLead(id, targetRepId);
-      }
+      await api.crm.recoverLead(leadId, targetRepId);
+      setQueueItems((prev) => prev.filter((item) => item.leadId !== leadId));
+      setNotificationMsg(`Lead recovered and locked to ${targetRepName}. Concurrency lock applied (F3.8).`);
+      setTimeout(() => setNotificationMsg(null), 4000);
     } catch (err) {
-      console.warn('Recovery API call completed with local lock:', err.message);
+      setActionError(err.message);
+      setTimeout(() => setActionError(null), 4000);
     }
-
-    setTimeout(() => setNotificationMsg(null), 4000);
   };
+
+  const availableRep = (item) => members.find((m) => m.available && m.id !== item.currentAssigneeId);
+  const managerRep = (item) =>
+    members.find((m) => (m.level === 'owner' || m.level === 'admin') && m.id !== item.currentAssigneeId);
 
   return (
     <div className="space-y-6">
@@ -110,10 +62,8 @@ export default function RecoveryQueuePage({ onNavigate }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="text-xs text-[#79756d] bg-white border border-[#d3cfc7] px-3 py-1.5 rounded-md font-medium">
-            Lock Guard: <span className="text-[#52796f] font-semibold">Active (No duplicate ownership F3.8)</span>
-          </div>
+        <div className="text-xs text-[#79756d] bg-white border border-[#d3cfc7] px-3 py-1.5 rounded-md font-medium">
+          Lock Guard: <span className="text-[#52796f] font-semibold">Active (No duplicate ownership F3.8)</span>
         </div>
       </div>
 
@@ -122,6 +72,20 @@ export default function RecoveryQueuePage({ onNavigate }) {
         <div className="p-3 bg-[#eaf0ee] border border-[#52796f]/30 text-[#52796f] rounded-lg text-xs font-medium flex items-center gap-2">
           <CheckCircle2 size={14} />
           <span>{notificationMsg}</span>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="p-3 bg-[#faece8] border border-[#c26751]/30 text-[#c26751] rounded-lg text-xs font-medium flex items-center gap-2">
+          <AlertCircle size={14} />
+          <span>{actionError}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-3 bg-[#faece8] border border-[#c26751]/30 text-[#c26751] rounded-lg text-xs font-medium flex items-center gap-2">
+          <AlertCircle size={14} />
+          <span>{error}</span>
         </div>
       )}
 
@@ -139,7 +103,11 @@ export default function RecoveryQueuePage({ onNavigate }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#e8e5de]">
-            {queueItems.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-[#79756d]">Loading recovery queue…</td>
+              </tr>
+            ) : queueItems.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-8 text-center text-[#79756d]">
                   <CheckCircle2 size={24} className="mx-auto text-[#52796f] mb-2" />
@@ -148,58 +116,56 @@ export default function RecoveryQueuePage({ onNavigate }) {
                 </td>
               </tr>
             ) : (
-              queueItems.map((item) => (
-                <tr key={item.id} className="hover:bg-[#faf9f6]">
-                  <td className="p-3">
-                    <div className="font-bold text-[#1a1917]">{item.customerName}</div>
-                    <div className="text-[11px] text-[#79756d] font-mono">{item.id} • {item.leadId}</div>
-                    <div className="text-[11px] text-[#a8a49c]">{item.contact} ({item.intakeSource})</div>
-                  </td>
+              queueItems.map((item) => {
+                const rep = availableRep(item);
+                const manager = managerRep(item);
+                return (
+                  <tr key={item.id} className="hover:bg-[#faf9f6]">
+                    <td className="p-3">
+                      <div className="font-bold text-[#1a1917]">{item.customerName}</div>
+                      <div className="text-[11px] text-[#79756d] font-mono">{item.id}</div>
+                      <div className="text-[11px] text-[#a8a49c]">{item.contact} ({item.intakeSource})</div>
+                    </td>
 
-                  <td className="p-3">
-                    <div className="font-semibold text-[#1a1917]">{item.currentAssignee}</div>
-                    <div className="text-[10px] text-[#c26751]">No action recorded</div>
-                  </td>
+                    <td className="p-3">
+                      <div className="font-semibold text-[#1a1917]">{item.currentAssignee}</div>
+                      <div className="text-[10px] text-[#c26751]">No action recorded</div>
+                    </td>
 
-                  <td className="p-3">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-[#faece8] text-[#c26751] border border-[#c26751]/30">
-                      <AlertOctagon size={11} />
-                      <span>{item.escalationCount}x Escalated</span>
-                    </span>
-                  </td>
+                    <td className="p-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-[#faece8] text-[#c26751] border border-[#c26751]/30">
+                        <AlertOctagon size={11} />
+                        <span>{item.escalationCount}x Escalated</span>
+                      </span>
+                    </td>
 
-                  <td className="p-3 text-[#3c3933] max-w-sm">
-                    <div className="font-medium leading-relaxed">{item.reason}</div>
-                  </td>
+                    <td className="p-3 text-[#3c3933] max-w-sm">
+                      <div className="font-medium leading-relaxed">{item.reason}</div>
+                    </td>
 
-                  <td className="p-3 font-mono font-semibold text-[#79756d]">
-                    {item.timeInQueue}
-                  </td>
+                    <td className="p-3 font-mono font-semibold text-[#79756d]">{item.timeInQueue}</td>
 
-                  <td className="p-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => {
-                          const rep = members.find((m) => m.available && m.id !== item.currentAssigneeId) || { name: 'Elena Rostova (Senior Rep)', id: 'rep_1' };
-                          handleReassign(item.leadId || item.id, rep.name, rep.id);
-                        }}
-                        className="px-2.5 py-1 bg-[#1a1917] text-white rounded text-xs font-semibold hover:bg-[#33302a] transition-all"
-                      >
-                        Reassign to Available Rep
-                      </button>
-                      <button
-                        onClick={() => {
-                          const mgr = members.find((m) => (m.level === 'owner' || m.level === 'admin') && m.id !== item.currentAssigneeId) || { name: 'Alex Mercer (Owner/Manager)', id: 'admin_1' };
-                          handleReassign(item.leadId || item.id, mgr.name, mgr.id);
-                        }}
-                        className="px-2.5 py-1 bg-white border border-[#d3cfc7] text-[#1a1917] rounded text-xs font-semibold hover:bg-[#f4f2ee]"
-                      >
-                        Escalate to Manager
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                    <td className="p-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          disabled={!rep}
+                          onClick={() => handleReassign(item.leadId, rep.name, rep.id)}
+                          className="px-2.5 py-1 bg-[#1a1917] text-white rounded text-xs font-semibold hover:bg-[#33302a] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Reassign to Available Rep
+                        </button>
+                        <button
+                          disabled={!manager}
+                          onClick={() => handleReassign(item.leadId, manager.name, manager.id)}
+                          className="px-2.5 py-1 bg-white border border-[#d3cfc7] text-[#1a1917] rounded text-xs font-semibold hover:bg-[#f4f2ee] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Escalate to Manager
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

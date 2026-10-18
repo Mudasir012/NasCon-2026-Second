@@ -1,5 +1,5 @@
 ﻿import React from 'react';
 
 export default function Badge({ children, variant = 'neutral' }) {
-  return <span className={adge badge-}>{children}</span>;
+  return <span className={`badge badge-${variant}`}>{children}</span>;
 }

@@ -1,33 +1,68 @@
-import React, { useState } from 'react';
-import {
-  Sliders,
-  Clock,
-  Users,
-  AlertTriangle,
-  Bell,
-  Save,
-  CheckCircle2,
-  ShieldCheck,
-  Send
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Clock, Users, AlertTriangle, Bell, Save, CheckCircle2, AlertCircle } from 'lucide-react';
+import { api } from '../../services/api';
+import { useWorkspace } from '../../context/WorkspaceContext';
 
 export default function AssignmentRulesPage() {
+  const { settings, refresh } = useWorkspace();
+
   const [roundRobinEnabled, setRoundRobinEnabled] = useState(true);
   const [maxOpenLeads, setMaxOpenLeads] = useState(5);
-  const [ackWindowSeconds, setAckWindowSeconds] = useState(45); // Seconds for easy demo (Section 4)
+  const [ackWindowSeconds, setAckWindowSeconds] = useState(45);
   const [tier1Timeout, setTier1Timeout] = useState(45);
   const [tier2Timeout, setTier2Timeout] = useState(60);
-  const [tier3Action, setTier3Action] = useState('manager_recovery');
+  const [tier3Action] = useState('manager_recovery');
   const [reassignOnLeave, setReassignOnLeave] = useState(true);
   const [acknowledgedLeadTreatment, setAcknowledgedLeadTreatment] = useState('retain_with_warning');
-  const [notificationChannel, setNotificationChannel] = useState('slack');
-  const [webhookUrl, setWebhookUrl] = useState('https://hooks.slack.com/services/T00/B00/XXXXX');
-  const [saveToast, setSaveToast] = useState(false);
+  const [notificationChannel, setNotificationChannel] = useState('webhook');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [saveState, setSaveState] = useState(null); // 'saved' | 'error'
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 3000);
+  // Hydrate from the workspace settings (real, persisted values).
+  useEffect(() => {
+    if (!settings) return;
+    setMaxOpenLeads(settings.maxOpenLeads ?? 5);
+    setAckWindowSeconds(settings.acknowledgeSeconds ?? 45);
+    const escalation = settings.escalation ?? [];
+    setTier1Timeout(escalation[0]?.afterSeconds ?? 45);
+    setTier2Timeout(escalation[1]?.afterSeconds ?? 60);
+    const alerts = settings.alerts ?? {};
+    setNotificationChannel(alerts.slackWebhookUrl ? 'slack' : alerts.telegramBotToken ? 'telegram' : 'webhook');
+    setWebhookUrl(alerts.slackWebhookUrl || alerts.telegramBotToken || alerts.webhookUrl || '');
+  }, [settings]);
+
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
+    setSaving(true);
+    try {
+      const existingAlerts = settings?.alerts ?? {};
+      const alerts = {
+        ...existingAlerts,
+        webhookUrl: notificationChannel === 'webhook' ? webhookUrl : existingAlerts.webhookUrl ?? '',
+        slackWebhookUrl: notificationChannel === 'slack' ? webhookUrl : existingAlerts.slackWebhookUrl ?? '',
+        telegramBotToken: notificationChannel === 'telegram' ? webhookUrl : existingAlerts.telegramBotToken ?? '',
+      };
+
+      await api.workspace.updateSettings({
+        maxOpenLeads: Number(maxOpenLeads),
+        acknowledgeSeconds: Number(ackWindowSeconds),
+        escalation: [
+          { afterSeconds: Number(tier1Timeout), to: 'next' },
+          { afterSeconds: Number(tier2Timeout), to: 'backup' },
+          { afterSeconds: Number(tier2Timeout) + 60, to: 'manager' },
+        ],
+        alerts,
+      });
+
+      await refresh();
+      setSaveState('saved');
+    } catch {
+      setSaveState('error');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveState(null), 3500);
+    }
   };
 
   return (
@@ -43,17 +78,24 @@ export default function AssignmentRulesPage() {
 
         <button
           onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1917] text-white rounded-md text-xs font-semibold hover:bg-[#33302a] transition-all shadow-sm"
+          disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1917] text-white rounded-md text-xs font-semibold hover:bg-[#33302a] transition-all shadow-sm disabled:opacity-50"
         >
           <Save size={14} />
-          <span>Save Rule Engine</span>
+          <span>{saving ? 'Saving…' : 'Save Rule Engine'}</span>
         </button>
       </div>
 
-      {saveToast && (
+      {saveState === 'saved' && (
         <div className="p-3 bg-[#eaf0ee] border border-[#52796f]/30 text-[#52796f] rounded-lg text-xs font-semibold flex items-center gap-2">
           <CheckCircle2 size={14} />
-          <span>Assignment and SLA escalation rules updated successfully. Real-time engine synced.</span>
+          <span>Assignment and SLA escalation rules saved to the workspace.</span>
+        </div>
+      )}
+      {saveState === 'error' && (
+        <div className="p-3 bg-[#faece8] border border-[#c26751]/30 text-[#c26751] rounded-lg text-xs font-semibold flex items-center gap-2">
+          <AlertCircle size={14} />
+          <span>Could not save the rules. Check your permissions and try again.</span>
         </div>
       )}
 
@@ -84,7 +126,7 @@ export default function AssignmentRulesPage() {
             <input
               type="number"
               min="1"
-              max="25"
+              max="500"
               value={maxOpenLeads}
               onChange={(e) => setMaxOpenLeads(Number(e.target.value))}
               className="w-32 p-1.5 border border-[#d3cfc7] rounded bg-white text-[#1a1917] text-xs font-bold"
@@ -106,18 +148,18 @@ export default function AssignmentRulesPage() {
           <div className="p-3 bg-[#faf9f6] border border-[#e8e5de] rounded-md text-xs space-y-1">
             <label className="font-semibold text-[#1a1917] block">First-Response SLA Window (Seconds)</label>
             <div className="text-[#79756d] text-[11px] mb-2">
-              Time the assignee has to click Acknowledge or record an action before escalating (configurable in seconds for demo).
+              Time the assignee has to click Acknowledge or record an action before escalating.
             </div>
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                min="10"
-                max="600"
+                min="1"
+                max="86400"
                 value={ackWindowSeconds}
                 onChange={(e) => setAckWindowSeconds(Number(e.target.value))}
                 className="w-32 p-1.5 border border-[#d3cfc7] rounded bg-white text-[#1a1917] text-xs font-mono font-bold"
               />
-              <span className="text-[#79756d] text-xs">seconds ({Math.round(ackWindowSeconds / 60 * 10) / 10} mins)</span>
+              <span className="text-[#79756d] text-xs">seconds ({Math.round((ackWindowSeconds / 60) * 10) / 10} mins)</span>
             </div>
           </div>
 
@@ -142,19 +184,31 @@ export default function AssignmentRulesPage() {
 
           <div className="space-y-3 text-xs">
             <div className="p-3 bg-[#faf9f6] border border-[#e8e5de] rounded-md">
-              <div className="flex justify-between font-semibold text-[#1a1917] mb-1">
+              <div className="flex justify-between items-center font-semibold text-[#1a1917] mb-1">
                 <span>Tier 1: Next Eligible Round-Robin Employee</span>
-                <span className="font-mono text-[#c26751]">{tier1Timeout}s SLA</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={tier1Timeout}
+                  onChange={(e) => setTier1Timeout(Number(e.target.value))}
+                  className="w-20 p-1 border border-[#d3cfc7] rounded bg-white text-[#c26751] font-mono text-xs text-right"
+                />
               </div>
-              <div className="text-[11px] text-[#79756d]">Triggers automatically when primary assignee window expires.</div>
+              <div className="text-[11px] text-[#79756d]">Triggers automatically when the primary assignee window expires.</div>
             </div>
 
             <div className="p-3 bg-[#faf9f6] border border-[#e8e5de] rounded-md">
-              <div className="flex justify-between font-semibold text-[#1a1917] mb-1">
-                <span>Tier 2: Designated Backup Specialist (Elena Rostova)</span>
-                <span className="font-mono text-[#c26751]">{tier2Timeout}s SLA</span>
+              <div className="flex justify-between items-center font-semibold text-[#1a1917] mb-1">
+                <span>Tier 2: Designated Backup Specialist</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={tier2Timeout}
+                  onChange={(e) => setTier2Timeout(Number(e.target.value))}
+                  className="w-20 p-1 border border-[#d3cfc7] rounded bg-white text-[#c26751] font-mono text-xs text-right"
+                />
               </div>
-              <div className="text-[11px] text-[#79756d]">High-priority escalation to pre-assigned backup specialist.</div>
+              <div className="text-[11px] text-[#79756d]">High-priority escalation to the pre-assigned backup specialist.</div>
             </div>
 
             <div className="p-3 bg-[#faf9f6] border border-[#e8e5de] rounded-md">
@@ -162,7 +216,7 @@ export default function AssignmentRulesPage() {
                 <span>Tier 3: Sales Manager & Recovery Queue</span>
                 <span className="text-[#52796f] font-semibold">Immediate</span>
               </div>
-              <div className="text-[11px] text-[#79756d]">Places lead in Recovery Queue with urgent manager broadcast.</div>
+              <div className="text-[11px] text-[#79756d]">Places the lead in the Recovery Queue with an urgent manager broadcast.</div>
             </div>
           </div>
 
@@ -208,7 +262,7 @@ export default function AssignmentRulesPage() {
             <div className="text-[11px] text-[#79756d]">Alerts the new owner outside the application upon escalation.</div>
 
             <div className="grid grid-cols-3 gap-2 pt-1">
-              {['slack', 'telegram', 'email'].map((ch) => (
+              {['webhook', 'slack', 'telegram'].map((ch) => (
                 <button
                   type="button"
                   key={ch}
@@ -226,6 +280,7 @@ export default function AssignmentRulesPage() {
 
             <input
               type="text"
+              placeholder="https://hooks.slack.com/services/..."
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
               className="w-full p-1.5 border border-[#d3cfc7] rounded bg-white text-[#1a1917] text-xs font-mono outline-none mt-2"
