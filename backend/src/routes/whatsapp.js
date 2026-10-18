@@ -9,12 +9,25 @@ import {
   listFailedMessages,
   retryFailedMessage,
   sendOutboundMessage,
-  twilioConfigured,
   updateDeliveryStatus,
 } from '../lib/whatsapp.js';
 import { db } from '../lib/db.js';
 
 const router = Router();
+
+/**
+ * Whether real Twilio credentials are configured (vs. simulator mode).
+ */
+function twilioConfigured() {
+  const sid = config.twilio.accountSid;
+  const token = config.twilio.authToken;
+  return Boolean(
+    sid && token
+    && !sid.startsWith('AC_your')
+    && token !== 'your_twilio_auth_token_here'
+    && sid.startsWith('AC')
+  );
+}
 
 /**
  * Validate Twilio X-Twilio-Signature header (I1.2 - forgery protection).

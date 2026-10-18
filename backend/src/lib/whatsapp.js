@@ -1,49 +1,152 @@
+/**
+ * WhatsApp integration via whatsapp-web.js (Puppeteer-based, no API key needed).
+ *
+ * How it works:
+ *  - On startup, a headless Chromium browser logs in to WhatsApp Web.
+ *  - First run: a QR code is printed to the terminal — scan it with your phone once.
+ *  - After that, the session is saved to ./.wwebjs_auth and reused automatically.
+ *  - Incoming messages fire handleIncomingMessage() → creates contacts + leads.
+ *  - Outbound messages are sent via client.sendMessage() for real delivery.
+ */
+
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import { createLead } from './leads.js';
 import { record as audit } from './audit.js';
-import { config } from '../config.js';
 
 const messages = db.collection('messages');
 const contacts = db.collection('contacts');
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Twilio configuration check
+// WhatsApp Web client (singleton)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function twilioConfigured() {
-  const sid = config.twilio.accountSid;
-  const token = config.twilio.authToken;
-  return Boolean(
-    sid && token
-    && !sid.startsWith('AC_your')
-    && token !== 'your_twilio_auth_token_here'
-    && sid.startsWith('AC')
-  );
+let waClient = null;
+let waReady = false;
+let waQr = null;
+let waStatus = 'disconnected'; // 'disconnected' | 'qr_ready' | 'authenticated' | 'ready' | 'error'
+
+export function getWAStatus() {
+  return { status: waStatus, hasQr: Boolean(waQr), ready: waReady };
+}
+
+export function getWAQr() {
+  return waQr; // raw QR string for frontend to render
+}
+
+/**
+ * Boot the WhatsApp Web client.
+ * Call once from server.js — it runs in the background.
+ */
+export async function startWhatsAppClient(workspaceId) {
+  if (waClient) return waClient; // already started
+
+  let Client, LocalAuth;
+  try {
+    const wweb = await import('whatsapp-web.js');
+    Client = wweb.Client;
+    LocalAuth = wweb.LocalAuth;
+  } catch (err) {
+    console.warn('[whatsapp-web] whatsapp-web.js not found — WhatsApp bot disabled:', err.message);
+    waStatus = 'error';
+    return null;
+  }
+
+  waClient = new Client({
+    authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
+    puppeteer: {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
+    },
+  });
+
+  // ── QR code ────────────────────────────────────────────────────────────────
+  waClient.on('qr', (qr) => {
+    waQr = qr;
+    waStatus = 'qr_ready';
+    // Print to terminal so dev can scan immediately
+    import('qrcode-terminal').then(({ default: qrcode }) => {
+      console.log('\n[whatsapp-web] Scan this QR code with your WhatsApp phone:\n');
+      qrcode.generate(qr, { small: true });
+    }).catch(() => {
+      console.log('[whatsapp-web] QR code (copy to https://www.qr-code-generator.com):');
+      console.log(qr);
+    });
+  });
+
+  // ── Authenticated ──────────────────────────────────────────────────────────
+  waClient.on('authenticated', () => {
+    waStatus = 'authenticated';
+    waQr = null;
+    console.log('[whatsapp-web] Authenticated — session saved.');
+  });
+
+  // ── Ready ──────────────────────────────────────────────────────────────────
+  waClient.on('ready', () => {
+    waReady = true;
+    waStatus = 'ready';
+    console.log('[whatsapp-web] Client ready. Real WhatsApp messages will be sent and received.');
+  });
+
+  // ── Disconnected ───────────────────────────────────────────────────────────
+  waClient.on('disconnected', (reason) => {
+    waReady = false;
+    waStatus = 'disconnected';
+    waClient = null;
+    console.warn('[whatsapp-web] Disconnected:', reason);
+  });
+
+  // ── Incoming messages ──────────────────────────────────────────────────────
+  waClient.on('message', async (msg) => {
+    if (msg.fromMe) return;
+    if (String(msg.from).includes('status@broadcast')) return;
+    if (String(msg.from).endsWith('@g.us')) return; // ignore group messages
+
+    const rawFrom = String(msg.from ?? '').split('@')[0]; // e.g. "923001234567"
+    const phone = `+${rawFrom.replace(/\D/g, '')}`;
+    const body = String(msg.body ?? '').trim();
+
+    if (!body) return;
+
+    try {
+      await handleIncomingMessage({
+        from: phone,
+        to: 'wa_bot',
+        body,
+        messageSid: msg.id?._serialized || `WA_${Date.now()}`,
+        workspaceId,
+      });
+      console.log(`[whatsapp-web] Inbound from ${phone}: "${body.slice(0, 60)}"`);
+    } catch (err) {
+      console.error('[whatsapp-web] Failed to handle incoming message:', err.message);
+    }
+  });
+
+  waClient.initialize();
+  console.log('[whatsapp-web] Client initializing — this may take 20–40 seconds on first run...');
+  return waClient;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Inbound: real Twilio webhook handler
+// Inbound message handler (shared by real WA events + simulator endpoint)
 // ──────────────────────────────────────────────────────────────────────────────
 
-/**
- * Handle incoming WhatsApp message via Twilio Sandbox Webhook (I1.1, I1.5, I1.8).
- */
 export async function handleIncomingMessage({ from, to, body, messageSid, workspaceId }) {
-  // Idempotency: reject duplicate webhook replays (I1.8)
+  // Idempotency: ignore duplicate deliveries (I1.8)
   const existing = await messages.find((m) => m.providerRef === messageSid);
-  if (existing) {
-    return { duplicate: true, message: existing };
-  }
+  if (existing) return { duplicate: true, message: existing };
 
-  const cleanPhone = from.replace(/^whatsapp:/i, '').trim();
+  const cleanPhone = String(from).replace(/^whatsapp:/i, '').trim();
 
-  // Contact matching (I1.5)
   let contact = await contacts.find((c) => c.phone === cleanPhone && c.workspaceId === workspaceId);
   let createdLead = null;
 
   if (!contact) {
-    // Unknown number → create contact + lead via round-robin (F3.1, I1.5)
     contact = {
       id: randomUUID(),
       workspaceId,
@@ -63,7 +166,7 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
         source: 'whatsapp',
         notes: `Inbound WhatsApp: "${body}"`,
       },
-      actorName: 'twilio_webhook',
+      actorName: 'whatsapp_bot',
     });
   }
 
@@ -74,7 +177,7 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
     direction: 'inbound',
     channel: 'whatsapp',
     from: cleanPhone,
-    to: to ? to.replace(/^whatsapp:/i, '').trim() : 'sandbox',
+    to: String(to ?? 'bot'),
     body,
     status: 'delivered',
     providerRef: messageSid,
@@ -86,7 +189,7 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
 
   await audit({
     workspaceId,
-    actorId: 'twilio_webhook',
+    actorId: 'whatsapp_bot',
     action: 'message.received',
     target: msgRecord.id,
     metadata: { phone: cleanPhone, contactId: contact.id, leadCreated: Boolean(createdLead) },
@@ -96,82 +199,39 @@ export async function handleIncomingMessage({ from, to, body, messageSid, worksp
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Outbound: real Twilio REST API send (I1.3, I1.4)
+// Outbound: real whatsapp-web.js send
 // ──────────────────────────────────────────────────────────────────────────────
 
-/**
- * Send an outbound WhatsApp message via Twilio REST API.
- * Falls back to simulator mode (records in DB only) when credentials are absent.
- */
 export async function sendOutboundMessage({ workspaceId, contactId, body, employeeId }) {
   const contact = await contacts.find((c) => c.id === contactId && c.workspaceId === workspaceId);
   if (!contact) throw new Error('Contact not found');
 
-  // Opt-out guard (I1.9)
   if (contact.optedOut) {
     throw new Error('Contact has opted out of messaging. Communication blocked by compliance rules.');
   }
 
   const msgId = randomUUID();
-  let providerRef = `SM${randomUUID().replace(/-/g, '').slice(0, 32)}`;
+  let providerRef = `WA_out_${randomUUID().slice(0, 16)}`;
   let status = 'sent';
   let errorMsg = null;
-  let simulatorMode = false;
+  const simulatorMode = !waReady;
 
-  // ── Real Twilio REST API dispatch ─────────────────────────────────────────
-  if (twilioConfigured()) {
+  // ── Real send via whatsapp-web.js ─────────────────────────────────────────
+  if (waReady && waClient) {
     try {
-      const sid = config.twilio.accountSid;
-      const token = config.twilio.authToken;
-      const fromNumber = config.twilio.whatsappNumber;
-
-      const toPhone = contact.phone.startsWith('whatsapp:')
-        ? contact.phone
-        : `whatsapp:${contact.phone}`;
-
-      const fromFormatted = fromNumber.startsWith('whatsapp:')
-        ? fromNumber
-        : `whatsapp:${fromNumber}`;
-
-      const twilioResponse = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            From: fromFormatted,
-            To: toPhone,
-            Body: body,
-          }),
-          signal: AbortSignal.timeout(15000),
-        }
-      );
-
-      const payload = await twilioResponse.json().catch(() => ({}));
-
-      if (twilioResponse.ok && payload.sid) {
-        providerRef = payload.sid;
-        status = payload.status === 'queued' ? 'sent' : (payload.status || 'sent');
-        console.log(`[whatsapp] Real message dispatched via Twilio: ${payload.sid} → ${contact.phone}`);
-      } else {
-        errorMsg = payload.message || payload.code
-          ? `Twilio error ${payload.code}: ${payload.message}`
-          : `Twilio HTTP ${twilioResponse.status}`;
-        status = 'failed';
-        console.warn(`[whatsapp] Twilio send failed: ${errorMsg}`);
-      }
+      // WhatsApp chat IDs are phone numbers with @c.us suffix
+      const chatId = contact.phone.replace(/^\+/, '') + '@c.us';
+      const result = await waClient.sendMessage(chatId, body);
+      providerRef = result?.id?._serialized || providerRef;
+      status = 'sent';
+      console.log(`[whatsapp-web] Outbound sent to ${contact.phone}: "${body.slice(0, 60)}"`);
     } catch (err) {
       errorMsg = err.message;
       status = 'failed';
-      console.warn(`[whatsapp] Twilio API unreachable: ${err.message}`);
+      console.warn(`[whatsapp-web] Send failed to ${contact.phone}: ${err.message}`);
     }
   } else {
-    // ── Simulator mode: credentials not configured ────────────────────────────
-    simulatorMode = true;
-    console.log(`[whatsapp] Simulator mode — Twilio not configured. Message recorded in DB only.`);
+    console.log(`[whatsapp-web] Simulator mode — client not ready. Message stored only.`);
   }
 
   const record = {
@@ -181,7 +241,7 @@ export async function sendOutboundMessage({ workspaceId, contactId, body, employ
     employeeId,
     direction: 'outbound',
     channel: 'whatsapp',
-    from: config.twilio.whatsappNumber || 'sandbox',
+    from: 'wa_bot',
     to: contact.phone,
     body,
     status,
@@ -225,7 +285,7 @@ export async function listFailedMessages(workspaceId) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Delivery status callback from Twilio
+// Delivery status (for delivery receipts from WA)
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function updateDeliveryStatus({ messageSid, status, error = null }) {
@@ -243,7 +303,7 @@ export async function updateDeliveryStatus({ messageSid, status, error = null })
   if (updated) {
     await audit({
       workspaceId: updated.workspaceId,
-      actorId: 'twilio_status_callback',
+      actorId: 'wa_bot',
       action: `message.${updated.status}`,
       target: updated.id,
       metadata: { providerRef: messageSid, status: updated.status, error },
@@ -254,7 +314,7 @@ export async function updateDeliveryStatus({ messageSid, status, error = null })
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Retry: re-sends the original body via the real send path
+// Retry
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function retryFailedMessage({ workspaceId, messageId, employeeId }) {
