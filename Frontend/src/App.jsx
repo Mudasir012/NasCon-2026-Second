@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { CRMProvider } from './context/CRMContext';
 import { ToastProvider } from './components/common/Toast';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/auth/LoginPage';
@@ -76,9 +77,11 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <CRMProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </CRMProvider>
     </AuthProvider>
   );
 }
