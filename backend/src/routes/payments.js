@@ -1,153 +1,73 @@
 import { Router } from 'express';
-import { config } from '../config.js';
-import { DEFAULT_PLAN_ID, findPlan, PLANS } from '../data/plans.js';
-import { requireAuth, requireRole } from '../lib/auth.js';
-import { accountBalances, depositAddress, depositHistory } from '../lib/binance.js';
-import { createIntent, listIntents, reconcilePayments } from '../lib/payments.js';
+import { requireAuth } from '../lib/auth.js';
+import { requirePermission, workspaceContext } from '../lib/context.js';
+import { createPaymentRequest, getRevenueMetrics, handleStripeWebhook, stripeConfigured } from '../lib/payments.js';
 
 const router = Router();
 
-const ADDRESS_TTL_MS = 10 * 60 * 1000;
-let addressCache = { value: null, fetchedAt: 0 };
-
-async function currentDepositAddress() {
-  if (addressCache.value && Date.now() - addressCache.fetchedAt < ADDRESS_TTL_MS) {
-    return addressCache.value;
-  }
-
-  const result = await depositAddress({
-    coin: config.binance.coin,
-    network: config.binance.network,
-  });
-
-  addressCache = { value: result, fetchedAt: Date.now() };
-  return result;
-}
-
-router.get('/config', requireAuth, (req, res) => {
-  res.json({
-    configured: config.binance.configured,
-    asset: config.binance.coin,
-    network: config.binance.network,
-    tolerancePercent: config.payments.tolerancePercent,
-    pollSeconds: config.payments.pollSeconds,
-  });
-});
-
-router.get('/plans', requireAuth, (req, res) => {
-  res.json({
-    plans: PLANS,
-    defaultPlanId: DEFAULT_PLAN_ID,
-    asset: config.binance.coin,
-    network: config.binance.network,
-    tolerancePercent: config.payments.tolerancePercent,
-  });
-});
-
-router.get('/intents', requireAuth, async (req, res) => {
-  const all = await listIntents();
-  const visible = req.user.role === 'admin' ? all : all.filter((i) => i.userId === req.user.id);
-  res.json({ intents: visible });
-});
-
-router.post('/intents', requireAuth, async (req, res) => {
-  if (!config.binance.configured) {
-    return res.status(503).json({ error: 'Crypto payments are not configured on the server' });
-  }
-
-  const plan = findPlan(String(req.body?.planId ?? DEFAULT_PLAN_ID));
-
-  if (!plan) {
-    return res.status(400).json({ error: 'Choose a valid subscription plan' });
-  }
-
-  let address;
-
+/**
+ * Public Stripe webhook endpoint (I2.2, I2.3).
+ */
+router.post('/webhook', async (req, res) => {
+  const signature = req.headers['stripe-signature'];
   try {
-    address = await currentDepositAddress();
-  } catch (error) {
-    return res.status(502).json({ error: `Could not load the deposit address: ${error.message}` });
+    const result = await handleStripeWebhook(req.body, signature);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
-
-  if (!address?.address) {
-    return res.status(502).json({ error: 'Binance did not return a deposit address' });
-  }
-
-  const intent = await createIntent({
-    user: req.user,
-    plan,
-    asset: config.binance.coin,
-    network: config.binance.network,
-    address: address.address,
-  });
-
-  return res.status(201).json({ intent, addressTag: address.tag ?? null });
 });
 
-router.post('/intents/:id/check', requireAuth, async (req, res) => {
-  const all = await listIntents();
-  const target = all.find((intent) => intent.id === req.params.id);
-
-  if (!target) {
-    return res.status(404).json({ error: 'Payment not found' });
-  }
-
-  if (target.userId !== req.user.id && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'This is not your payment' });
-  }
-
-  let result;
-
+/**
+ * Test Simulator for Stripe Webhooks (allows demonstration of instant payment confirmation without webhook tunneling).
+ */
+router.post('/simulate-webhook', async (req, res) => {
   try {
-    result = await reconcilePayments();
-  } catch (error) {
-    return res.status(502).json({ error: error.message });
-  }
-
-  const intent = result.intents.find((item) => item.id === target.id) ?? target;
-
-  return res.json({ intent, updated: result.changed.includes(target.id) });
-});
-
-/** Admin view of the read-only wallet state. */
-router.get('/wallet', requireAuth, requireRole('admin'), async (req, res) => {
-  if (!config.binance.configured) {
-    return res.status(503).json({ error: 'Binance is not configured' });
-  }
-
-  try {
-    const [account, deposits] = await Promise.all([
-      accountBalances(),
-      depositHistory({ coin: config.binance.coin, limit: 20 }),
-    ]);
-
-    res.json({
-      readOnly: true,
-      permissions: {
-        canTrade: account.canTrade,
-        canWithdraw: account.canWithdraw,
-        canDeposit: account.canDeposit,
-      },
-      balances: account.balances
-        .filter((balance) => Number(balance.free) + Number(balance.locked) > 0)
-        .map((balance) => ({
-          asset: balance.asset,
-          free: Number(balance.free),
-          locked: Number(balance.locked),
-          total: Number(balance.free) + Number(balance.locked),
-        })),
-      deposits: (Array.isArray(deposits) ? deposits : []).map((deposit) => ({
-        txId: deposit.txId,
-        amount: Number(deposit.amount),
-        coin: deposit.coin,
-        network: deposit.network,
-        status: Number(deposit.status),
-        insertTime: Number(deposit.insertTime),
-      })),
+    const { providerRef, status = 'paid' } = req.body ?? {};
+    const result = await handleStripeWebhook({
+      id: `sim_evt_${Date.now()}`,
+      type: status === 'paid' ? 'checkout.session.completed' : 'charge.refunded',
+      data: { object: { id: providerRef, payment_intent: providerRef } },
     });
-  } catch (error) {
-    return res.status(502).json({ error: error.message });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
+});
+
+router.use(requireAuth, workspaceContext);
+
+router.get('/status', (req, res) => {
+  res.json({
+    configured: stripeConfigured(),
+    provider: 'Stripe (Test Mode)',
+  });
+});
+
+router.get('/metrics', requirePermission('crm.view'), async (req, res) => {
+  const metrics = await getRevenueMetrics(req.workspace.id);
+  res.json(metrics);
+});
+
+router.post('/create-link', requirePermission('crm.edit'), async (req, res) => {
+  const { opportunityId, contactId, contactEmail, amount, currency, description } = req.body ?? {};
+
+  if (!amount || Number(amount) <= 0) {
+    return res.status(400).json({ error: 'Please specify a positive payment amount' });
+  }
+
+  const payment = await createPaymentRequest({
+    workspaceId: req.workspace.id,
+    opportunityId,
+    contactId,
+    contactEmail,
+    employeeId: req.member.id,
+    amount,
+    currency,
+    description,
+  });
+
+  res.status(201).json({ payment });
 });
 
 export default router;

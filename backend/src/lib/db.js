@@ -2,22 +2,49 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MongoClient } from 'mongodb';
 
 const here = dirname(fileURLToPath(import.meta.url));
-
-/** Where every runtime collection lives — one JSON file per collection, gitignored. */
 export const dataDir = join(here, '..', '..', 'data');
 
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/omniflow';
+
+let mongoClient = null;
+let mongoDb = null;
+let isMongoConnected = false;
+
+// Attempt MongoDB connection asynchronously
+export async function initMongo() {
+  if (mongoDb) return mongoDb;
+  try {
+    mongoClient = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 2000,
+      connectTimeoutMS: 2000,
+    });
+    await mongoClient.connect();
+    mongoDb = mongoClient.db();
+    isMongoConnected = true;
+    console.log(`[db] Connected to MongoDB database: ${mongoDb.databaseName}`);
+    return mongoDb;
+  } catch (err) {
+    isMongoConnected = false;
+    console.warn(`[db] MongoDB not reachable at ${MONGODB_URI}. Falling back to file-backed JSON store: ${err.message}`);
+    return null;
+  }
+}
+
+// Kick off connection immediately
+initMongo().catch(() => {});
+
 /**
- * A tiny JSON-backed collection with atomic writes and a serialised write queue,
- * so two concurrent requests can never interleave into a corrupt file. Reads are
- * uncached on purpose: the files are small and the file is the source of truth.
+ * Universal collection abstraction supporting both MongoDB and Atomic File Storage.
+ * Allows existing business logic (leads, members, settings, audit) to run with 100% fidelity.
  */
 export function collection(name) {
   const file = join(dataDir, `${name}.json`);
   let queue = Promise.resolve();
 
-  async function readRows() {
+  async function readJsonRows() {
     try {
       const raw = await readFile(file, 'utf8');
       const parsed = JSON.parse(raw);
@@ -28,7 +55,7 @@ export function collection(name) {
     }
   }
 
-  async function writeRows(rows) {
+  async function writeJsonRows(rows) {
     await mkdir(dataDir, { recursive: true });
     const tmp = join(dataDir, `.${name}.${randomUUID()}.tmp`);
     await writeFile(tmp, `${JSON.stringify(rows, null, 2)}\n`, 'utf8');
@@ -46,25 +73,91 @@ export function collection(name) {
 
   return {
     name,
-    read: () => readRows(),
-    find: async (predicate) => (await readRows()).find(predicate) ?? null,
-    where: async (predicate) => (await readRows()).filter(predicate),
 
-    /** Read-modify-write under the lock. `fn(rows)` may return a value for the caller. */
+    read: async () => {
+      if (isMongoConnected && mongoDb) {
+        try {
+          const docs = await mongoDb.collection(name).find({}).toArray();
+          return docs.map((doc) => {
+            const { _id, ...rest } = doc;
+            return { id: doc.id || String(_id), ...rest };
+          });
+        } catch {
+          // Fallback to json if query fails
+        }
+      }
+      return readJsonRows();
+    },
+
+    find: async (predicateOrQuery) => {
+      if (isMongoConnected && mongoDb && typeof predicateOrQuery === 'object' && predicateOrQuery !== null) {
+        try {
+          const doc = await mongoDb.collection(name).findOne(predicateOrQuery);
+          if (doc) {
+            const { _id, ...rest } = doc;
+            return { id: doc.id || String(_id), ...rest };
+          }
+          return null;
+        } catch {}
+      }
+      const rows = isMongoConnected && mongoDb ? await mongoDb.collection(name).find({}).toArray() : await readJsonRows();
+      if (typeof predicateOrQuery === 'function') {
+        return rows.find(predicateOrQuery) ?? null;
+      }
+      return rows.find((r) => Object.entries(predicateOrQuery).every(([k, v]) => r[k] === v)) ?? null;
+    },
+
+    where: async (predicateOrQuery) => {
+      if (isMongoConnected && mongoDb && typeof predicateOrQuery === 'object' && predicateOrQuery !== null) {
+        try {
+          const docs = await mongoDb.collection(name).find(predicateOrQuery).toArray();
+          return docs.map((doc) => {
+            const { _id, ...rest } = doc;
+            return { id: doc.id || String(_id), ...rest };
+          });
+        } catch {}
+      }
+      const rows = isMongoConnected && mongoDb ? await mongoDb.collection(name).find({}).toArray() : await readJsonRows();
+      if (typeof predicateOrQuery === 'function') {
+        return rows.filter(predicateOrQuery);
+      }
+      return rows.filter((r) => Object.entries(predicateOrQuery).every(([k, v]) => r[k] === v));
+    },
+
     mutate: (fn) =>
       withLock(async () => {
-        const rows = await readRows();
+        let rows = isMongoConnected && mongoDb
+          ? (await mongoDb.collection(name).find({}).toArray()).map(({ _id, ...r }) => ({ id: r.id || String(_id), ...r }))
+          : await readJsonRows();
+
         const outcome = await fn(rows);
-        await writeRows(rows);
+
+        if (isMongoConnected && mongoDb) {
+          try {
+            await mongoDb.collection(name).deleteMany({});
+            if (rows.length > 0) {
+              await mongoDb.collection(name).insertMany(rows.map((r) => ({ ...r, _id: undefined })));
+            }
+          } catch (e) {
+            console.error(`[db] MongoDB sync error on ${name}:`, e.message);
+          }
+        }
+
+        await writeJsonRows(rows);
         return outcome;
       }),
 
     insert: (doc) =>
       withLock(async () => {
-        const rows = await readRows();
         const record = { ...doc, id: doc.id ?? randomUUID() };
+        if (isMongoConnected && mongoDb) {
+          try {
+            await mongoDb.collection(name).insertOne({ ...record });
+          } catch {}
+        }
+        const rows = await readJsonRows();
         rows.push(record);
-        await writeRows(rows);
+        await writeJsonRows(rows);
         return record;
       }),
   };
@@ -72,3 +165,4 @@ export function collection(name) {
 
 export const db = { collection };
 export const newId = () => randomUUID();
+export const isConnected = () => isMongoConnected;

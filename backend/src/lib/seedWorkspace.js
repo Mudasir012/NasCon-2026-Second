@@ -3,40 +3,27 @@ import { addMemberIfAbsent, ensureWorkspaceForUser } from './context.js';
 import { db } from './db.js';
 import { getSettings, saveSettings } from './settings.js';
 
-/**
- * A demo workspace that is already populated, so the assignment and escalation rules
- * are observable the moment the app boots.
- *
- * Timers are deliberately short: 45 seconds to acknowledge, then escalation at 30, 60
- * and 120 seconds after the deadline. Idempotent — it only creates things that are
- * missing.
- */
 const DEMO_MEMBERS = [
-  { email: 'admin@comsats-abbottabad.edu.pk', level: 'owner', backup: false },
-  { email: 'rubina.aslam@comsats-abbottabad.edu.pk', level: 'admin', backup: true },
-  { email: 'sadia.khan@comsats-abbottabad.edu.pk', level: 'user', backup: false },
-  { email: 'ayesha.siddiqui@comsats-abbottabad.edu.pk', level: 'user', backup: false },
-  { email: 'hamza.riaz@comsats-abbottabad.edu.pk', level: 'user', backup: false },
+  { email: 'owner@omniflow.io', level: 'owner', backup: false },
+  { email: 'admin@omniflow.io', level: 'admin', backup: true },
+  { email: 'marcus@omniflow.io', level: 'user', backup: false },
+  { email: 'jordan@omniflow.io', level: 'user', backup: false },
 ];
 
 export async function seedDemoWorkspace() {
-  const owner = await findUserByEmail('admin@comsats-abbottabad.edu.pk');
-
+  const owner = await findUserByEmail('owner@omniflow.io');
   if (!owner) return null;
 
-  const { workspace } = await ensureWorkspaceForUser(owner, { workspaceName: 'Nascom Demo' });
+  const { workspace } = await ensureWorkspaceForUser(owner, { workspaceName: 'Solaria Energy Systems' });
 
   await db.collection('workspaces').mutate((rows) => {
     const row = rows.find((entry) => entry.id === workspace.id);
-
-    if (row && row.name !== 'Nascom Demo') row.name = 'Nascom Demo';
+    if (row && row.name !== 'Solaria Energy Systems') row.name = 'Solaria Energy Systems';
   });
 
   let added = 0;
-
   for (const definition of DEMO_MEMBERS) {
     const user = await findUserByEmail(definition.email);
-
     if (!user) continue;
 
     const before = await db
@@ -53,25 +40,26 @@ export async function seedDemoWorkspace() {
     if (!before) added += 1;
   }
 
-  // Only seed the settings once. Re-applying them on every boot would silently undo
-  // whatever the team configured in the workspace settings page.
   const existingSettings = await db
     .collection('workspace-settings')
     .find((row) => row.workspaceId === workspace.id);
 
-  const settings = existingSettings
-    ? await getSettings(workspace.id)
-    : await saveSettings(workspace.id, {
-        publicIntake: true,
-        acknowledgeSeconds: 45,
-        maxOpenLeads: 4,
-        timezone: 'Asia/Karachi',
-        escalation: [
-          { afterSeconds: 30, to: 'next' },
-          { afterSeconds: 60, to: 'backup' },
-          { afterSeconds: 120, to: 'manager' },
-        ],
-      });
+  if (!existingSettings) {
+    await saveSettings(workspace.id, {
+      acknowledgeSeconds: 45, // 45 seconds for demo observation
+      publicIntake: true,
+      maxOpenLeads: 5,
+      escalation: [
+        { afterSeconds: 30, to: 'next' },
+        { afterSeconds: 60, to: 'backup' },
+        { afterSeconds: 120, to: 'manager' },
+      ],
+    });
+  }
 
-  return { workspace, members: added, acknowledgeSeconds: settings.acknowledgeSeconds };
+  return {
+    workspace,
+    members: added,
+    acknowledgeSeconds: 45,
+  };
 }
