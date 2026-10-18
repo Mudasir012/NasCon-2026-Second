@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import './LandingPage.css';
 import {
   ShieldCheck,
   Clock,
@@ -11,16 +10,11 @@ import {
   Users,
   CheckCircle2,
   AlertTriangle,
-  RotateCcw,
-  Sparkles,
-  Lock,
-  Kanban,
-  FileText
+  RotateCcw
 } from 'lucide-react';
 
 export default function LandingPage({ onEnterApp }) {
-  // Interactive Simulator State
-  const [leadStatus, setLeadStatus] = useState('pending'); // 'pending' | 'acknowledged' | 'escalated'
+  const [leadStatus, setLeadStatus] = useState('pending');
   const [slaTime, setSlaTime] = useState(45);
   const [assignedRep, setAssignedRep] = useState('Marcus Vance');
   const [repStatus, setRepStatus] = useState('Available');
@@ -30,7 +24,6 @@ export default function LandingPage({ onEnterApp }) {
   ]);
   const [activeTab, setActiveTab] = useState('escalation');
 
-  // Countdown timer for simulator
   useEffect(() => {
     let timer;
     if (leadStatus === 'pending' && slaTime > 0) {
@@ -91,30 +84,36 @@ export default function LandingPage({ onEnterApp }) {
   };
 
   return (
-    <div className="landing-wrapper">
+    <div className="min-h-screen w-full bg-[#faf9f6] text-[#3c3933]">
       {/* Navigation */}
-      <nav className="lp-nav">
-        <div className="lp-nav-inner">
-          <a href="#" className="lp-brand">
-            <div className="lp-brand-mark">
-              <ShieldCheck size={18} />
+      <nav className="sticky top-0 z-50 w-full border-b border-[#e8e5de] bg-[#faf9f6]/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2.5 font-bold text-[#1a1917] text-lg tracking-tight">
+            <div className="flex h-7 w-7 items-center justify-center rounded bg-[#4a6b82] text-white">
+              <ShieldCheck size={16} />
             </div>
             <span>OmniFlow</span>
-          </a>
+          </div>
 
-          <ul className="lp-nav-links">
-            <li><a href="#how-it-works">How It Works</a></li>
-            <li><a href="#product">Product</a></li>
-            <li><a href="#integrations">Integrations</a></li>
-            <li><a href="#solutions">Industries</a></li>
-            <li><a href="#pricing">Pricing</a></li>
+          <ul className="hidden md:flex items-center gap-8 text-sm font-medium text-[#79756d]">
+            <li><a href="#how-it-works" className="hover:text-[#1a1917] transition-colors">How It Works</a></li>
+            <li><a href="#product" className="hover:text-[#1a1917] transition-colors">Product</a></li>
+            <li><a href="#integrations" className="hover:text-[#1a1917] transition-colors">Integrations</a></li>
+            <li><a href="#solutions" className="hover:text-[#1a1917] transition-colors">Industries</a></li>
+            <li><a href="#pricing" className="hover:text-[#1a1917] transition-colors">Pricing</a></li>
           </ul>
 
-          <div className="lp-nav-actions">
-            <button className="lp-btn lp-btn-ghost" onClick={onEnterApp}>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onEnterApp('dashboard')}
+              className="px-3.5 py-2 text-sm font-semibold text-[#1a1917] hover:bg-[#f4f2ee] rounded-md transition-colors"
+            >
               Sign In
             </button>
-            <button className="lp-btn lp-btn-primary" onClick={onEnterApp}>
+            <button
+              onClick={() => onEnterApp('dashboard')}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-[#1a1917] hover:bg-[#33302a] rounded-md transition-all shadow-sm"
+            >
               Launch Workspace
               <ArrowRight size={14} />
             </button>
@@ -122,125 +121,144 @@ export default function LandingPage({ onEnterApp }) {
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <header className="lp-hero">
-        <div className="lp-pill-badge">
-          <span className="lp-pill-dot"></span>
+      {/* Hero */}
+      <header className="mx-auto max-w-5xl px-6 pt-16 pb-12 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 rounded-full border border-[#d4a373]/30 bg-[#f7f1ea] text-xs font-semibold text-[#8c6239]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#8c6239]"></span>
           Built for teams of 5 to 30 service professionals
         </div>
 
-        <h1 className="lp-hero-title">
-          Every inbound lead answered. <span>Guaranteed.</span>
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#1a1917] mb-5 leading-tight">
+          Every inbound lead answered. <span className="text-[#4a6b82]">Guaranteed.</span>
         </h1>
 
-        <p className="lp-hero-sub">
-          Stop losing revenue to missed notifications and vacation gaps. OmniFlow unites sales pipeline management, deterministic SLA lead escalation, and real external customer conversations in one place.
+        <p className="mx-auto max-w-2xl text-lg text-[#79756d] mb-8 font-normal leading-relaxed">
+          Stop losing revenue to missed notifications and leave gaps. OmniFlow unites sales pipeline management, deterministic SLA lead escalation, and real external customer conversations in one place.
         </p>
 
-        <div className="lp-hero-ctas">
-          <button className="lp-btn lp-btn-primary" onClick={onEnterApp}>
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-14">
+          <button
+            onClick={() => onEnterApp('dashboard')}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#1a1917] text-white rounded-md text-sm font-semibold hover:bg-[#33302a] transition-all shadow-sm"
+          >
             Open Live Workspace
             <ArrowRight size={16} />
           </button>
-          <a href="#simulator" className="lp-btn lp-btn-outline">
+          <a
+            href="#simulator"
+            className="px-5 py-2.5 bg-white border border-[#d3cfc7] text-[#1a1917] rounded-md text-sm font-semibold hover:bg-[#f4f2ee] transition-colors"
+          >
             Test Live SLA Simulator Below
           </a>
         </div>
 
-        {/* Live Interactive SLA Escalation Simulator */}
-        <div id="simulator" className="lp-sim-card">
-          <div className="lp-sim-header">
-            <div className="lp-sim-title-group">
-              <span className="lp-sim-badge">Live Interactive Simulator</span>
-              <strong style={{ fontSize: '0.92rem', color: 'var(--lp-text-title)' }}>
+        {/* Live Simulator Card */}
+        <div id="simulator" className="mx-auto max-w-4xl text-left bg-white border border-[#e8e5de] rounded-xl shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-[#f4f2ee] border-b border-[#e8e5de]">
+            <div className="flex items-center gap-3">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[#eaf0ee] text-[#52796f] border border-[#52796f]/25">
+                Live Interactive Simulator
+              </span>
+              <span className="text-sm font-semibold text-[#1a1917]">
                 Deterministic Lead Protection in Action
-              </strong>
+              </span>
             </div>
             <button
               onClick={resetSimulator}
-              className="lp-btn lp-btn-ghost"
-              style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#79756d] hover:text-[#1a1917] px-2.5 py-1 rounded hover:bg-[#e8e5de] transition-colors"
             >
-              <RotateCcw size={14} /> Reset State
+              <RotateCcw size={13} /> Reset State
             </button>
           </div>
 
-          <div className="lp-sim-body">
-            {/* Left: Lead Card */}
-            <div className="lp-lead-box">
-              <div className="lp-lead-top">
+          <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Left Column: Lead Box */}
+            <div className="md:col-span-7 bg-[#faf9f6] border border-[#e8e5de] rounded-lg p-5">
+              <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                  <div className="lp-lead-name">Sarah Jenkins</div>
-                  <div className="lp-lead-source">Source: Twilio WhatsApp Sandbox (Inbound #2094)</div>
+                  <h3 className="text-base font-bold text-[#1a1917]">Sarah Jenkins</h3>
+                  <div className="text-xs text-[#79756d]">Source: Twilio WhatsApp Sandbox (Inbound #2094)</div>
                 </div>
 
-                <div className={`lp-sla-indicator ${leadStatus === 'acknowledged' ? 'lp-sla-ack' : 'lp-sla-active'}`}>
-                  <Clock size={14} />
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono font-semibold ${
+                  leadStatus === 'acknowledged' ? 'bg-[#eaf0ee] text-[#52796f] border border-[#52796f]/30' : 'bg-[#faece8] text-[#c26751] border border-[#c26751]/30'
+                }`}>
+                  <Clock size={13} />
                   {leadStatus === 'acknowledged' && 'Acknowledged'}
                   {leadStatus === 'pending' && `SLA Window: ${slaTime}s`}
                   {leadStatus === 'escalated' && 'Escalated to Tier 2'}
                 </div>
               </div>
 
-              <div className="lp-lead-details">
-                <div><strong>Inquiry:</strong> Commercial Solar Roof Installation (40 kW)</div>
-                <div><strong>Assigned To:</strong> {assignedRep}</div>
+              <div className="space-y-1.5 text-xs text-[#3c3933] mb-5">
+                <div><strong className="text-[#1a1917]">Inquiry:</strong> Commercial Solar Roof Installation (40 kW)</div>
+                <div><strong className="text-[#1a1917]">Assigned To:</strong> {assignedRep}</div>
                 <div>
-                  <strong>Status:</strong>{' '}
-                  <span style={{
-                    color: leadStatus === 'acknowledged' ? 'var(--pastel-sage)' :
-                           leadStatus === 'escalated' ? 'var(--pastel-terracotta)' : 'var(--pastel-amber)'
-                  }}>
-                    {leadStatus === 'acknowledged' ? 'Active Conversation' :
-                     leadStatus === 'escalated' ? 'Escalated / Backup Assigned' : 'Awaiting Acknowledgement'}
+                  <strong className="text-[#1a1917]">Status:</strong>{' '}
+                  <span className={leadStatus === 'acknowledged' ? 'text-[#52796f] font-semibold' : leadStatus === 'escalated' ? 'text-[#c26751] font-semibold' : 'text-[#b08945] font-semibold'}>
+                    {leadStatus === 'acknowledged' ? 'Active Conversation' : leadStatus === 'escalated' ? 'Escalated / Backup Assigned' : 'Awaiting Acknowledgement'}
                   </span>
                 </div>
               </div>
 
-              <div className="lp-lead-actions">
+              <div className="flex flex-wrap gap-2.5 mb-5">
                 {leadStatus !== 'acknowledged' ? (
-                  <button className="lp-btn lp-btn-primary" onClick={handleSimAcknowledge}>
-                    <CheckCircle2 size={16} /> Acknowledge Lead
+                  <button
+                    onClick={handleSimAcknowledge}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1917] text-white text-xs font-semibold rounded hover:bg-[#33302a] transition-all"
+                  >
+                    <CheckCircle2 size={14} /> Acknowledge Lead
                   </button>
                 ) : (
-                  <button className="lp-btn lp-btn-outline" onClick={onEnterApp}>
-                    Open Customer 360 View <ArrowRight size={14} />
+                  <button
+                    onClick={() => onEnterApp('leads')}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white border border-[#d3cfc7] text-[#1a1917] text-xs font-semibold rounded hover:bg-[#f4f2ee]"
+                  >
+                    View in Leads Table <ArrowRight size={13} />
                   </button>
                 )}
-                <button className="lp-btn lp-btn-outline" onClick={handleSimEscalate} disabled={leadStatus === 'acknowledged'}>
+                <button
+                  onClick={handleSimEscalate}
+                  disabled={leadStatus === 'acknowledged'}
+                  className="px-3.5 py-1.5 bg-white border border-[#d3cfc7] text-[#1a1917] text-xs font-semibold rounded hover:bg-[#f4f2ee] disabled:opacity-40"
+                >
                   Force Escalate
                 </button>
               </div>
 
-              {/* Event Log */}
-              <div style={{ marginTop: '20px', borderTop: '1px solid var(--lp-border)', paddingTop: '14px' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--lp-text-muted)', marginBottom: '8px' }}>
-                  IMMUTABLE AUDIT TRAIL
+              <div className="pt-3 border-t border-[#e8e5de]">
+                <div className="text-[11px] font-bold tracking-wider uppercase text-[#79756d] mb-2">
+                  Immutable Audit Trail
                 </div>
                 {logs.slice(0, 3).map((l, i) => (
-                  <div key={i} style={{ fontSize: '0.8rem', color: 'var(--lp-text-body)', marginBottom: '4px' }}>
-                    <span style={{ color: 'var(--lp-text-faint)', marginRight: '8px' }}>{l.time}</span>
+                  <div key={i} className="text-xs text-[#3c3933] mb-1">
+                    <span className="text-[#a8a49c] mr-2">{l.time}</span>
                     {l.event}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Right: Availability & Escalation Controls */}
-            <div className="lp-sim-controls">
-              <div className="lp-control-group">
-                <h4>Simulate Real-World Conditions</h4>
-                <div className="lp-rep-status-list">
-                  <div className="lp-rep-item">
-                    <div className="lp-rep-info">
-                      <div className="lp-rep-avatar">MV</div>
+            {/* Right Column: Controls */}
+            <div className="md:col-span-5 md:border-l md:border-[#e8e5de] md:pl-6 flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#79756d] mb-3">
+                  Simulate Rep Status
+                </h4>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between p-2.5 bg-[#f4f2ee] border border-[#e8e5de] rounded-md text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-full bg-[#ebf1f5] text-[#4a6b82] flex items-center justify-center font-bold text-[11px]">
+                        MV
+                      </div>
                       <div>
-                        <strong>Marcus Vance</strong>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--lp-text-muted)' }}>Primary Rep</div>
+                        <div className="font-semibold text-[#1a1917]">Marcus Vance</div>
+                        <div className="text-[10px] text-[#79756d]">Primary Rep</div>
                       </div>
                     </div>
                     <select
-                      className="lp-status-select"
+                      className="px-2 py-1 bg-white border border-[#d3cfc7] rounded text-xs text-[#1a1917] outline-none"
                       value={repStatus}
                       onChange={(e) => handleRepStatusChange(e.target.value)}
                     >
@@ -251,341 +269,127 @@ export default function LandingPage({ onEnterApp }) {
                     </select>
                   </div>
 
-                  <div className="lp-rep-item">
-                    <div className="lp-rep-info">
-                      <div className="lp-rep-avatar" style={{ background: 'var(--pastel-sand-light)', color: 'var(--pastel-sand)' }}>
+                  <div className="flex items-center justify-between p-2.5 bg-[#f4f2ee] border border-[#e8e5de] rounded-md text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-full bg-[#f7f1ea] text-[#d4a373] flex items-center justify-center font-bold text-[11px]">
                         ER
                       </div>
                       <div>
-                        <strong>Elena Rostova</strong>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--lp-text-muted)' }}>Backup / Manager</div>
+                        <div className="font-semibold text-[#1a1917]">Elena Rostova</div>
+                        <div className="text-[10px] text-[#79756d]">Backup Specialist</div>
                       </div>
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--pastel-sage)', fontWeight: 600 }}>Available</span>
+                    <span className="text-xs font-semibold text-[#52796f]">Available</span>
                   </div>
                 </div>
 
-                <div className="lp-sim-hint">
-                  <strong>Try it:</strong> Switch Marcus to <em>"On leave"</em>. Notice how OmniFlow immediately reassigns the unacknowledged lead to Elena without losing a second.
+                <div className="p-3 rounded-md bg-[#f7f1ea] border border-[#d4a373]/30 text-xs text-[#3c3933] leading-relaxed">
+                  <strong>Try it:</strong> Switch Marcus to <em>"On leave"</em>. OmniFlow immediately reassigns the unacknowledged lead to Elena without losing a second.
                 </div>
               </div>
 
-              <div style={{ fontSize: '0.78rem', color: 'var(--lp-text-faint)', marginTop: '16px' }}>
-                Zero duplicate actions • Server-side concurrency control • Configurable response windows
+              <div className="text-[11px] text-[#a8a49c] mt-4 pt-3 border-t border-[#e8e5de]">
+                Zero duplicate actions • Concurrency control • Configurable SLA timers
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Integrations Strip */}
-      <section className="lp-integrations-bar" id="integrations">
-        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--lp-text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Real Connections, Zero Mockups
-        </span>
-        <div className="lp-integration-chip">
-          <MessageSquare size={16} color="var(--pastel-slate)" /> Twilio WhatsApp Sandbox
-        </div>
-        <div className="lp-integration-chip">
-          <CreditCard size={16} color="var(--pastel-terracotta)" /> Stripe Test Mode
-        </div>
-        <div className="lp-integration-chip">
-          <Calendar size={16} color="var(--pastel-sage)" /> Google Calendar OAuth 2.0
-        </div>
-        <div className="lp-integration-chip">
-          <AlertTriangle size={16} color="var(--pastel-amber)" /> Slack & Telegram Escalations
+      {/* Integrations bar */}
+      <section className="w-full border-y border-[#e8e5de] bg-white py-6" id="integrations">
+        <div className="mx-auto max-w-6xl px-6 flex flex-wrap items-center justify-center gap-8 text-xs font-semibold text-[#3c3933]">
+          <span className="text-[#a8a49c] uppercase tracking-wider font-bold">Real Connections:</span>
+          <div className="flex items-center gap-2"><MessageSquare size={15} className="text-[#4a6b82]" /> Twilio WhatsApp Sandbox</div>
+          <div className="flex items-center gap-2"><CreditCard size={15} className="text-[#c26751]" /> Stripe Test Mode</div>
+          <div className="flex items-center gap-2"><Calendar size={15} className="text-[#52796f]" /> Google Calendar OAuth 2.0</div>
+          <div className="flex items-center gap-2"><AlertTriangle size={15} className="text-[#b08945]" /> Slack & Telegram Escalations</div>
         </div>
       </section>
 
-      {/* Core Problems & Solutions */}
-      <section className="lp-section" id="how-it-works">
-        <div className="lp-section-header">
-          <span className="lp-section-tag">Root Cause Analysis</span>
-          <h2 className="lp-section-title">Why Service Businesses Lose Inbound Revenue</h2>
+      {/* Problem & Solution Breakdown */}
+      <section className="mx-auto max-w-6xl px-6 py-16" id="how-it-works">
+        <div className="text-center max-w-xl mx-auto mb-12">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#4a6b82] mb-2 block">Root Cause Analysis</span>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#1a1917] tracking-tight">Why Service Businesses Lose Inbound Revenue</h2>
         </div>
 
-        <div className="lp-grid-3">
-          <div className="lp-feature-card">
-            <div className="lp-icon-box terracotta">
-              <Clock size={22} />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6 hover:border-[#d3cfc7] transition-all">
+            <div className="h-10 w-10 rounded bg-[#faece8] text-[#c26751] flex items-center justify-center mb-4">
+              <Clock size={20} />
             </div>
-            <h3>Informal Assignment & Dodged Ownership</h3>
-            <p>
-              When leads arrive in shared inboxes or team chats, everyone assumes someone else is handling it. OmniFlow assigns every lead to exactly one accountable person with a hard acknowledgement countdown.
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Informal Assignment & Dodged Ownership</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              When leads arrive in shared inboxes or chats, ownership is vague and responsibility is easy to dodge. OmniFlow assigns every lead to exactly one accountable person with an enforceable countdown.
             </p>
           </div>
 
-          <div className="lp-feature-card">
-            <div className="lp-icon-box sage">
-              <Users size={22} />
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6 hover:border-[#d3cfc7] transition-all">
+            <div className="h-10 w-10 rounded bg-[#eaf0ee] text-[#52796f] flex items-center justify-center mb-4">
+              <Users size={20} />
             </div>
-            <h3>Absence & Unbalanced Workloads</h3>
-            <p>
-              Standard CRMs route leads to employees who are sick, in client meetings, or off shift. OmniFlow monitors live availability statuses and caps active leads per rep before round-robin distribution.
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Absence & Overload Blindspots</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              Traditional CRMs assign leads to staff who are sick, in appointments, or overwhelmed. OmniFlow tracks live availability states and caps open leads before distributing.
             </p>
           </div>
 
-          <div className="lp-feature-card">
-            <div className="lp-icon-box slate">
-              <Layers size={22} />
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6 hover:border-[#d3cfc7] transition-all">
+            <div className="h-10 w-10 rounded bg-[#ebf1f5] text-[#4a6b82] flex items-center justify-center mb-4">
+              <Layers size={20} />
             </div>
-            <h3>Fragmented Tools & Record Gaps</h3>
-            <p>
-              Customer conversations happen in WhatsApp, payments on Stripe, and appointments on Google Calendar. OmniFlow ties real webhooks from all three directly to the customer 360 record.
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Fragmented Records & Tool Switching</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              Customer conversations stay in WhatsApp, payments in Stripe, and appointments in Google Calendar. OmniFlow ties real webhooks from all three into one customer 360 record.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Deep-Dive Feature Tabs */}
-      <section className="lp-tab-section" id="product">
-        <div className="lp-tab-container">
-          <div className="lp-section-header">
-            <span className="lp-section-tag">Modular System Architecture</span>
-            <h2 className="lp-section-title">Engineered to Support Your Actual Workflow</h2>
-          </div>
-
-          <div className="lp-tabs-bar">
-            <button
-              className={`lp-tab-trigger ${activeTab === 'escalation' ? 'active' : ''}`}
-              onClick={() => setActiveTab('escalation')}
-            >
-              Lead Escalation & Recovery
-            </button>
-            <button
-              className={`lp-tab-trigger ${activeTab === 'crm' ? 'active' : ''}`}
-              onClick={() => setActiveTab('crm')}
-            >
-              Customizable Pipeline & Stages
-            </button>
-            <button
-              className={`lp-tab-trigger ${activeTab === 'customer' ? 'active' : ''}`}
-              onClick={() => setActiveTab('customer')}
-            >
-              Unified Customer 360 View
-            </button>
-            <button
-              className={`lp-tab-trigger ${activeTab === 'security' ? 'active' : ''}`}
-              onClick={() => setActiveTab('security')}
-            >
-              Roles & Field-Level Protection
-            </button>
-          </div>
-
-          <div className="lp-preview-box">
-            {activeTab === 'escalation' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '12px' }}>
-                    Multi-Tier Escalation Chains
-                  </h3>
-                  <p style={{ color: 'var(--lp-text-muted)', fontSize: '0.92rem', marginBottom: '16px' }}>
-                    Configure exact response windows in seconds for quick testing. When an unacknowledged lead expires, it steps up:
-                  </p>
-                  <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.88rem' }}>
-                    <li style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                      <span className="lp-sim-badge">Tier 1</span> Next Available Round-Robin Colleague
-                    </li>
-                    <li style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                      <span className="lp-sim-badge" style={{ background: 'var(--pastel-sand-light)', color: 'var(--pastel-amber)' }}>Tier 2</span> Designated Team Backup Specialist
-                    </li>
-                    <li style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                      <span className="lp-sim-badge" style={{ background: 'var(--pastel-terracotta-light)', color: 'var(--pastel-terracotta)' }}>Tier 3</span> Sales Manager & Dedicated Recovery Queue
-                    </li>
-                  </ul>
-                </div>
-
-                <div style={{ background: 'var(--lp-surface)', padding: '20px', borderRadius: 'var(--lp-radius-lg)', border: '1px solid var(--lp-border)' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '10px' }}>
-                    The Recovery Queue
-                  </div>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--lp-text-muted)', marginBottom: '14px' }}>
-                    A dedicated safety net listing leads that escalated multiple times or remained untouched. Managers can reassign with a single click.
-                  </p>
-                  <div style={{ padding: '10px 14px', background: 'var(--lp-surface-subtle)', borderRadius: 'var(--lp-radius-md)', fontSize: '0.8rem', borderLeft: '3px solid var(--pastel-terracotta)' }}>
-                    <strong>3 Leads in Recovery Queue</strong> (Avg wait time: 4m 12s)
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'crm' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '12px' }}>
-                    Customizable Pipeline & Required Stage Fields
-                  </h3>
-                  <p style={{ color: 'var(--lp-text-muted)', fontSize: '0.92rem', marginBottom: '16px' }}>
-                    Add, rename, reorder, and remove stages without developer help. Require specific fields before moving deals to critical milestones (e.g., Quote Amount before Proposal Sent).
-                  </p>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <span className="lp-pill-badge" style={{ margin: 0 }}>No-code Custom Fields</span>
-                    <span className="lp-pill-badge" style={{ margin: 0 }}>Multi-Criteria Saved Lists</span>
-                  </div>
-                </div>
-
-                <div style={{ background: 'var(--lp-surface)', padding: '20px', borderRadius: 'var(--lp-radius-lg)', border: '1px solid var(--lp-border)' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '10px' }}>
-                    Stage Gate Validation
-                  </div>
-                  <div style={{ padding: '12px', background: 'var(--pastel-terracotta-light)', color: 'var(--pastel-terracotta)', borderRadius: 'var(--lp-radius-md)', fontSize: '0.82rem', border: '1px solid rgba(194, 103, 81, 0.25)' }}>
-                    <strong>Movement Blocked:</strong> Cannot transition to "Quote Delivered" until <em>"Survey Inspection Date"</em> and <em>"Estimated System Size"</em> are filled.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'customer' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '12px' }}>
-                    One Contact Record. Every Event.
-                  </h3>
-                  <p style={{ color: 'var(--lp-text-muted)', fontSize: '0.92rem', marginBottom: '16px' }}>
-                    No more toggling across four browser tabs. The Customer 360 page synchronizes WhatsApp conversations, Stripe checkout links, and Google Calendar appointments into a chronological timeline.
-                  </p>
-                </div>
-
-                <div style={{ background: 'var(--lp-surface)', padding: '20px', borderRadius: 'var(--lp-radius-lg)', border: '1px solid var(--lp-border)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.82rem' }}>
-                    <div style={{ padding: '8px 12px', background: 'var(--pastel-slate-light)', borderRadius: 'var(--lp-radius-sm)', color: 'var(--pastel-slate)' }}>
-                      <strong>WhatsApp:</strong> "Yes, Friday 10 AM works for our on-site inspection."
-                    </div>
-                    <div style={{ padding: '8px 12px', background: 'var(--pastel-sage-light)', borderRadius: 'var(--lp-radius-sm)', color: 'var(--pastel-sage)' }}>
-                      <strong>Google Calendar:</strong> Booked: On-site Inspection (10:00 - 11:00 AM)
-                    </div>
-                    <div style={{ padding: '8px 12px', background: 'var(--pastel-amber-light)', borderRadius: 'var(--lp-radius-sm)', color: 'var(--pastel-amber)' }}>
-                      <strong>Stripe:</strong> Payment Link generated for $500 Deposit (Pending)
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'security' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '12px' }}>
-                    Workspace Isolation & Field-Level Protection
-                  </h3>
-                  <p style={{ color: 'var(--lp-text-muted)', fontSize: '0.92rem', marginBottom: '16px' }}>
-                    Strict company workspace boundaries ensure no cross-tenant data leaks. Granular permissions allow masking opportunity values from junior employees or external collaborators.
-                  </p>
-                </div>
-
-                <div style={{ background: 'var(--lp-surface)', padding: '20px', borderRadius: 'var(--lp-radius-lg)', border: '1px solid var(--lp-border)' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--lp-text-title)', marginBottom: '8px' }}>
-                    Field-Level Masking Example
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', background: 'var(--lp-surface-subtle)', borderRadius: 'var(--lp-radius-sm)', fontSize: '0.82rem' }}>
-                    <span>Solar Commercial Contract (User View):</span>
-                    <strong style={{ letterSpacing: '0.1em', color: 'var(--lp-text-muted)' }}>$ ••••••••</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', background: 'var(--lp-surface-subtle)', borderRadius: 'var(--lp-radius-sm)', fontSize: '0.82rem', marginTop: '6px' }}>
-                    <span>Solar Commercial Contract (Owner/Admin):</span>
-                    <strong style={{ color: 'var(--pastel-sage)' }}>$48,500.00</strong>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Target Industries (Problem Statement Section 2) */}
-      <section className="lp-section" id="solutions">
-        <div className="lp-section-header">
-          <span className="lp-section-tag">Target Workspaces</span>
-          <h2 className="lp-section-title">Built Specifically for High-Intent Service Teams</h2>
+      {/* Target Industries */}
+      <section className="mx-auto max-w-6xl px-6 pb-16" id="solutions">
+        <div className="text-center max-w-xl mx-auto mb-10">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#4a6b82] mb-2 block">Target Workspaces</span>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#1a1917] tracking-tight">Built for 5 to 30 Person Service Teams</h2>
         </div>
 
-        <div className="lp-grid-3">
-          <div className="lp-feature-card">
-            <h3>Real Estate Agencies</h3>
-            <p>
-              High-value buyers call after hours or text during property viewings. Automatic SLA escalation guarantees inquiries are answered before buyers call another agent.
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6">
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Real Estate Agencies</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              High-value buyers text while agents are in showings. Automated escalation guarantees inquiries are answered before buyers browse other listings.
             </p>
           </div>
 
-          <div className="lp-feature-card">
-            <h3>Solar Installation Teams</h3>
-            <p>
-              Roof inspection appointments, custom wattage fields, and Stripe deposit links all synced from web forms into active technician calendars.
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6">
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Solar Installation Teams</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              Roof inspection appointments, custom kilowatt fields, and Stripe deposit links all synced from web forms into active technician calendars.
             </p>
           </div>
 
-          <div className="lp-feature-card">
-            <h3>Specialist & Dental Clinics</h3>
-            <p>
-              Patient-acquisition coordinators route incoming appointment requests without conflicts, tracking confirmation status via WhatsApp.
+          <div className="bg-white border border-[#e8e5de] rounded-lg p-6">
+            <h3 className="text-base font-bold text-[#1a1917] mb-2">Specialist & Dental Clinics</h3>
+            <p className="text-sm text-[#79756d] leading-relaxed">
+              Patient coordinators handle incoming consultation bookings without scheduling conflicts, confirmed via WhatsApp sandbox.
             </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Clean Pricing */}
-      <section className="lp-section" id="pricing" style={{ background: 'var(--lp-surface)', borderTop: '1px solid var(--lp-border)' }}>
-        <div className="lp-section-header">
-          <span className="lp-section-tag">Predictable Workspace Billing</span>
-          <h2 className="lp-section-title">One Fixed Price for the Entire Office</h2>
-        </div>
-
-        <div className="lp-pricing-grid">
-          <div className="lp-price-card">
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--lp-text-title)' }}>Small Service Team</h3>
-            <p style={{ fontSize: '0.88rem', color: 'var(--lp-text-muted)', marginTop: '4px' }}>For boutique agencies with up to 10 staff</p>
-            <div className="lp-price-tag">$149 <span>/ workspace / month</span></div>
-
-            <ul className="lp-price-features">
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Up to 10 user seats included</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Automatic Round-Robin & SLA timers</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Twilio WhatsApp Sandbox integration</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Stripe test & live payment links</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Full immutable audit trail</li>
-            </ul>
-
-            <button className="lp-btn lp-btn-outline" onClick={onEnterApp}>
-              Get Started
-            </button>
-          </div>
-
-          <div className="lp-price-card featured">
-            <div style={{ position: 'absolute', top: '-12px', right: '24px', background: 'var(--pastel-slate)', color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '2px 10px', borderRadius: '9999px', textTransform: 'uppercase' }}>
-              Standard Workspace
-            </div>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--lp-text-title)' }}>Growing Service Agency</h3>
-            <p style={{ fontSize: '0.88rem', color: 'var(--lp-text-muted)', marginTop: '4px' }}>For teams with 10 to 30 employees</p>
-            <div className="lp-price-tag">$289 <span>/ workspace / month</span></div>
-
-            <ul className="lp-price-features">
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Up to 30 user seats included</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Advanced multi-tier escalation chains</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Unlimited custom fields & pipelines</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Google Calendar OAuth scheduling</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Dedicated Recovery Queue & drill-down</li>
-              <li><CheckCircle2 size={16} color="var(--pastel-sage)" /> Field-level protection & masking</li>
-            </ul>
-
-            <button className="lp-btn lp-btn-primary" onClick={onEnterApp}>
-              Launch Workspace Now
-            </button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="lp-footer">
-        <div className="lp-footer-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="lp-brand-mark" style={{ width: '22px', height: '22px' }}>
-              <ShieldCheck size={14} />
+      <footer className="w-full border-t border-[#e8e5de] bg-[#f4f2ee] py-8 text-xs text-[#79756d]">
+        <div className="mx-auto max-w-6xl px-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-[#1a1917] font-bold">
+            <div className="flex h-5 w-5 items-center justify-center rounded bg-[#4a6b82] text-white">
+              <ShieldCheck size={12} />
             </div>
-            <strong style={{ color: 'var(--lp-text-title)' }}>OmniFlow</strong>
-            <span style={{ marginLeft: '12px' }}>Unified Business Management & Lead Protection Platform</span>
+            <span>OmniFlow</span>
+            <span className="font-normal text-[#79756d] ml-2">Unified Business Management & Lead Protection Platform</span>
           </div>
-
           <div>
-            Built strictly in accordance with Unified Business Management Platform specifications.
+            Built strictly to specification for 5–30 employee service businesses.
           </div>
         </div>
       </footer>

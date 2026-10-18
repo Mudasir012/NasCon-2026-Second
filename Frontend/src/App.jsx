@@ -1,35 +1,36 @@
 import React, { useState } from 'react';
 import LandingPage from './pages/LandingPage';
+import AppLayout from './components/layout/AppLayout';
 import OperationalDashboardPage from './pages/dashboard/OperationalDashboardPage';
+import LeadsPage from './pages/escalation/LeadsPage';
+import RecoveryQueuePage from './pages/escalation/RecoveryQueuePage';
+import AssignmentRulesPage from './pages/escalation/AssignmentRulesPage';
+import PipelinePage from './pages/crm/PipelinePage';
+import OpportunityDetailPage from './pages/crm/OpportunityDetailPage';
+import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage';
 
 function App() {
-  const [inApp, setInApp] = useState(false);
+  const [currentRoute, setCurrentRoute] = useState('landing');
 
-  if (inApp) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg-primary, #0a0d14)', color: '#fff', padding: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>OmniFlow Internal Workspace</h2>
-          <button
-            onClick={() => setInApp(false)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '6px',
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff',
-              cursor: 'pointer'
-            }}
-          >
-            ← Back to Landing Page
-          </button>
-        </div>
-        <OperationalDashboardPage />
-      </div>
-    );
+  if (currentRoute === 'landing') {
+    return <LandingPage onEnterApp={(target = 'dashboard') => setCurrentRoute(target)} />;
   }
 
-  return <LandingPage onEnterApp={() => setInApp(true)} />;
+  return (
+    <AppLayout
+      currentRoute={currentRoute}
+      onNavigate={(route) => setCurrentRoute(route)}
+      onExit={() => setCurrentRoute('landing')}
+    >
+      {currentRoute === 'dashboard' && <OperationalDashboardPage onNavigate={setCurrentRoute} />}
+      {currentRoute === 'leads' && <LeadsPage onNavigate={setCurrentRoute} />}
+      {currentRoute === 'recovery' && <RecoveryQueuePage onNavigate={setCurrentRoute} />}
+      {currentRoute === 'rules' && <AssignmentRulesPage />}
+      {currentRoute === 'pipeline' && <PipelinePage onNavigate={setCurrentRoute} />}
+      {currentRoute === 'opportunity' && <OpportunityDetailPage />}
+      {currentRoute === 'settings' && <WorkspaceSettingsPage />}
+    </AppLayout>
+  );
 }
 
 export default App;
